@@ -1,0 +1,14 @@
+/out/
+/src/build.sh
+/work/*.jar
+/work/build-*/
+/work/test-*/
+/work/feedback-*/
+/work/source-link-*/
+__pycache__/
+*.pyc
+*.jks
+*.keystore
+*.apk
+*.dex
+local.properties
