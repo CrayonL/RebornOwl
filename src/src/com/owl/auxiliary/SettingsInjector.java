@@ -198,6 +198,8 @@ public final class SettingsInjector {
 
     private static View footer(Activity act, Dialog dialog) {
         LinearLayout footer = new LinearLayout(act);
+        // 原生按钮按压会改变文字基线，不能让兄弟按钮跟随基线重新定位。
+        footer.setBaselineAligned(false);
         footer.setPadding(0, dp(act, FOOTER_GAP_DP), 0, dp(act, PADDING_DP));
         TextView close = footerButton(act, "关闭", "OutlineButton");
         TextView restart = footerButton(act, "重启", "SolidBlueButton");
