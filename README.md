@@ -36,44 +36,9 @@
 
 开关、会员档位和日期时区更改后，需要点击面板中的 **重启** 才会重新安装对应 Hook。Toast 表示选择了模块档位，不等于服务端已开通订阅。历史日期是否被服务端接受、补签及连胜修复均未验证。
 
-## 🔨 构建
+## 📜 开源许可
 
-需要 PowerShell 7、JDK 21、Android SDK Platform 35 / Build Tools 36.1.0。Python 测试只使用标准库。不使用 Gradle，也不会自动全局安装工具。
-
-```powershell
-# 下载官方编译 API 并核对 SHA-256；不会打入 APK。
-pwsh -File .\prepare-dependencies.ps1
-
-# 使用自己的签名密钥，口令通过隐藏输入读取。
-pwsh -File .\build.ps1 -SdkRoot 'D:\Android\SDK' -JdkRoot 'D:\Java\jdk-21' -Keystore 'D:\keys\owl.jks' -KeyAlias 'owl'
-```
-
-产物在 `out/`，文件名包含版本名和内部版本码。脚本拒绝覆盖同名 APK。签名私钥、口令、原始框架反编译 JAR、宿主 APK/DEX、账号配置和手机日志不随源码公开。自行构建的不同签名 APK 不能直接覆盖官方签名版本。
-
-## 🧪 验证
-
-```powershell
-pwsh -File .\test.ps1 -SdkRoot 'D:\Android\SDK' -JdkRoot 'D:\Java\jdk-21' -DexDirectory 'D:\duolingo-6.103.6-dex' -PythonPath 'C:\Python\python.exe' -DeviceSerial '你的ADB序列号'
-
-# 没有连接手机时，仅运行离线测试和 DEX 编译，不执行 ADB。
-pwsh -File .\test.ps1 -SdkRoot 'D:\Android\SDK' -JdkRoot 'D:\Java\jdk-21' -DexDirectory 'D:\duolingo-6.103.6-dex' -PythonPath 'C:\Python\python.exe' -Offline
-```
-
-`DexDirectory` 由自己合法取得的目标安装包中提取 `classes*.dex`，仓库不附宿主文件。入口测试需要手机 LSPosed 的 `/data/adb/modules/zygisk_lsposed/framework.dex`。
-
-- 七项 Java 回归：DEX 扫描、判题、会员工厂、关卡契约、日期及课程结束参数。
-- 三项真实宿主 DEX 契约测试，含原始关卡读写、节点转换、弹层同步作用域、不可变副本和课程会话入口。
-- Toast 连续切换、重复点击仅保留最新提示的回归。
-- GitHub 可用/不可用的 Intent 路由受控测试。
-- ART 入口参数、包名过滤与真实宿主课程结束判断测试，不创建课程或发送学习请求。
-
-每个测试子进程限时 60 秒。`OFFLINE_TESTS_PASS` 不包含 ART 和真实 Hook；`ALL_TESTS_PASS` 也不能代替所有功能的真机验收。大字体、深色模式、旋转、多窗口以及其他 ROM 尚未全面验收。
-
-按钮独立按压使用 `work/test/footer_press_test.ps1` 在 Windows 上比较真实截图。分别传入 `-Normal`、`-ClosePressed`、`-RestartPressed` 三张同一面板的 PNG，以及 `-CloseBounds x,y,width,height` 和 `-RestartBounds x,y,width,height` 两个完整按钮区域。必须确认被按按钮产生像素变化，另一按钮逐像素不变；截图和区域需要按当前设备采集，仓库不附手机画面。
-
-## 📜 项目来源与许可
-
-原始代码来自 `OwlAuxiliaryR_code_1.1.zip`，在原代码权利人的授权下继续维护并以 [MIT](LICENSE) 发布。第三方 API 和 GitHub 图标分别遵守其原许可，见 [THIRD_PARTY.md](THIRD_PARTY.md)。本项目与 Duolingo、GitHub 及 LSPosed 官方无隶属关系。
+第三方 API 和 GitHub 图标分别遵守其原许可，见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 💚 **开源项目，仅供交流学习，为了您的父母与家人请勿倒卖。**
 
