@@ -25,7 +25,14 @@ public final class Targets {
     public static final String C_DASH_STATUS =
             "com.duolingo.plus.dashboard.PlusViewModel$DashboardFeatureDisplayStatus";
     public static final String C_MUSIC_ACCESS = "com.duolingo.core.music.licensed.LicensedMusicAccess";
-    public static final String C_MUSIC_ACCESS_ALT = "com.duolingo.data.home.music.LicensedMusicAccess";
+    /** 6.103.6 中独立携带音乐权限的歌曲入口、会话与题目模型；真实 DEX 契约逐一核对。 */
+    public static final String[] C_MUSIC_ACCESS_MODELS = {
+            "com.duolingo.core.music.licensed.LicensedMusicPathData",
+            "com.duolingo.data.home.music.SongLandingPathData$LicensedSongLandingData",
+            "com.duolingo.data.home.music.LicensedMusicDetails",
+            "com.duolingo.data.home.music.LicensedSessionData",
+            "fk4", "ok4", "pk4", "zmq",
+    };
     public static final String C_DEBUG_CATEGORY = "com.duolingo.data.debug.settings.DebugCategory";
     public static final String C_DEBUG_CATEGORY_OLD = "com.duolingo.debug.DebugCategory";
     public static final String C_SETTINGS_ACTIVITY = "com.duolingo.settings.SettingsActivity";
@@ -139,7 +146,7 @@ public final class Targets {
     public static final String F_DASH_SUPPORTED = "SUPPORTED";
     public static final String F_MUSIC_FULL = "FULL";
     public static final String F_MUSIC_TASTER = "TASTER";
-    public static final String F_MUSIC_LOCKED = "LOCKED";
+    public static final String F_MUSIC_NONE = "NONE";
     /** Max 等级；6.103.6 的 hasMax 默认计算检查 GOLD。 */
     public static final String F_TIER_GOLD = "GOLD";
     /** Super 等级（沿用宿主的历史命名 PREMIUM）。 */

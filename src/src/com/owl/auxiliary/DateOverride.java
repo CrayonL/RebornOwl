@@ -11,6 +11,12 @@ import java.time.ZonedDateTime;
 public final class DateOverride {
     private DateOverride() {}
 
+    /** null 表示该项关闭；关闭地区时保留输入时钟的实际时区。 */
+    public static Clock configured(Clock realClock, String date, String region) {
+        Clock clock = region == null ? realClock : realClock.withZone(ZoneId.of(region));
+        return date == null || date.isEmpty() ? clock : shifted(clock, date, clock.getZone());
+    }
+
     public static LocalDate today(Clock realClock, ZoneId zone) {
         return realClock.instant().atZone(zone).toLocalDate();
     }

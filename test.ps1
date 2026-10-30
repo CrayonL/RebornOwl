@@ -46,14 +46,15 @@ $classes = Join-Path $PSScriptRoot ('work/test-' + [guid]::NewGuid().ToString('N
 New-Item -ItemType Directory -Path $classes | Out-Null
 $sources = Get-ChildItem -LiteralPath "$PSScriptRoot/src/src", "$PSScriptRoot/work/test" -Filter '*.java' -Recurse | ForEach-Object FullName
 Invoke-TestCommand "$JdkRoot/bin/javac.exe" (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options', '-classpath', "$platform;$modern;$xposed", '-d', $classes) + $sources)
-$tests = @('DexIndexRegressionTest', 'CorrectFeatureTest', 'PremiumFeatureTest', 'UnlockLessonsFeatureTest', 'DexIndexTest', 'DateOverrideTest', 'SkipFeatureTest')
+$tests = @('DexIndexRegressionTest', 'CorrectFeatureTest', 'PremiumFeatureTest', 'UnlockLessonsFeatureTest', 'DexIndexTest', 'DateOverrideTest', 'TimezoneFeatureTest', 'SkipFeatureTest')
 foreach ($test in $tests) {
     Invoke-TestCommand "$JdkRoot/bin/java.exe" @('-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8', '-cp', "$classes;$platform;$modern;$xposed", "com.owl.auxiliary.$test", $DexDirectory)
 }
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_contract_test.py", $DexDirectory)
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_date_contract_test.py", $DexDirectory)
+Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_music_contract_test.py", $DexDirectory)
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_unlock_contract_test.py", $DexDirectory)
-foreach ($test in @('premium_feedback_test.py', 'source_link_test.py')) {
+foreach ($test in @('premium_feedback_test.py', 'source_link_test.py', 'clock_hook_test.py', 'music_hook_test.py')) {
     Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/$test", '--sdk', $SdkRoot, '--jdk', $JdkRoot)
 }
 $dex = Join-Path $classes 'dex'

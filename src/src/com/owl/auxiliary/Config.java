@@ -19,7 +19,8 @@ public final class Config {
     public static final String K_SUPER    = "super";     // Super/Max 模式
     public static final String K_UNLOCK   = "unlock";    // 解锁关卡
     public static final String K_GAMETIME = "gametime";  // 无限时间
-    public static final String K_ZONEID   = "zoneid";    // 日期时区
+    public static final String K_DATE     = "date";      // 日期
+    public static final String K_ZONEID   = "zoneid";    // 地区（沿用原时区开关键）
     public static final String K_CORRECT  = "correct";   // 强制正确
     public static final String K_DEBUG    = "debug";     // 调试模式
     public static final String K_MUSIC    = "music";     // 音乐课程解锁
@@ -81,6 +82,11 @@ public final class Config {
                 }
                 Logx.i("已应用外部覆盖配置: " + sAltFile);
             }
+            if (!P.containsKey(K_DATE)) {
+                // 只迁移一次，之后切换地区不再影响日期开关。
+                P.setProperty(K_DATE, P.getProperty(K_ZONEID, "true"));
+                save();
+            }
         } catch (Throwable t) {
             Logx.w("Config 读取失败", t);
         }
@@ -97,7 +103,7 @@ public final class Config {
      * 带默认值的开关读取：配置里<b>显式写过的值</b>优先（含用户手动写下的 false）；
      * 完全没有该键时用 {@code def}（来自 {@link Feature#defaultOn()}）。
      *
-     * <p>这样「默认开启」的功能（如日期时区）在全新安装时即生效，而用户手动关闭
+     * <p>这样「默认开启」的功能在全新安装时即生效，而用户手动关闭
      * （写入 false）后仍能真正关闭 —— 不会出现"关不掉"。
      */
     public static boolean getOr(String key, boolean def) {
@@ -110,6 +116,14 @@ public final class Config {
         load();
         String v = P.getProperty(key);
         return v == null ? def : v;
+    }
+
+    public static String activeDate() {
+        return getOr(K_DATE, true) ? getStr(P_DATE, "") : null;
+    }
+
+    public static String activeRegion() {
+        return getOr(K_ZONEID, true) ? getStr(P_TIMEZONE, ZONE_DEFAULT) : null;
     }
 
     public static int getInt(String key, int def) {

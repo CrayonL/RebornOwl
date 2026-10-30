@@ -31,7 +31,34 @@ public final class DateOverrideTest {
         check(DateOverride.today(Clock.fixed(Instant.parse("2026-10-29T17:00:00Z"), ZoneOffset.UTC),
                 ZoneId.of(Config.ZONE_DEFAULT)).equals(LocalDate.of(2026, 10, 30)), "上海今天按当地日期判断");
         verifyCalendarDates();
+        verifyIndependentSettings();
         System.out.println("PASS DateOverride: today, past, future rejection, zone boundary, leap day, DST, continuous clock");
+    }
+
+    private static void verifyIndependentSettings() {
+        ZoneId shanghai = ZoneId.of("Asia/Shanghai");
+        Clock real = Clock.fixed(Instant.parse("2026-10-29T15:30:40Z"), shanghai);
+        check(DateOverride.configured(real, null, null) == real, "两个开关关闭时返回原时钟");
+        Clock dateOnly = DateOverride.configured(real, "2026-10-28", null);
+        check(dateOnly.getZone().equals(shanghai), "只开日期保留手机时区");
+        check(dateOnly.instant().equals(Instant.parse("2026-10-28T15:30:40Z")), "昨天不依赖外国地区");
+        Clock regionOnly = DateOverride.configured(real, null, "America/New_York");
+        check(regionOnly.instant().equals(real.instant()), "只开地区不偏移时间戳");
+        check(regionOnly.getZone().equals(NEW_YORK), "只开地区应用所选时区");
+        Clock both = DateOverride.configured(real, "2026-10-28", "America/New_York");
+        check(LocalDate.now(both).equals(LocalDate.of(2026, 10, 28)), "同时开启使用所选地区的日期");
+        Clock boundary = Clock.fixed(Instant.parse("2026-10-29T01:00:00Z"), shanghai);
+        check(LocalDate.now(DateOverride.configured(boundary, null, null)).getDayOfMonth() == 29,
+                "地区关闭时今天按上海计算");
+        check(LocalDate.now(DateOverride.configured(boundary, null, "America/New_York")).getDayOfMonth() == 28,
+                "地区开启时今天按纽约计算");
+        Clock spring = Clock.fixed(Instant.parse("2026-03-09T05:30:40Z"), NEW_YORK);
+        check(DateOverride.configured(spring, "2026-03-08", null).instant()
+                .equals(Instant.parse("2026-03-08T06:30:40Z")), "夏令时昨天按日历日期计算，不固定减24小时");
+        try {
+            DateOverride.configured(real, null, "Invalid/Region");
+            throw new AssertionError("非法地区必须明确失败");
+        } catch (java.time.DateTimeException expected) { }
     }
 
     private static void verifyCalendarDates() {

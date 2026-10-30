@@ -82,9 +82,21 @@ public final class SettingsInjector {
         if (options != null) {
             options.setVisibility(toggle.isChecked() ? View.VISIBLE : View.GONE);
         }
+        boolean[] restoring = {false};
         toggle.setOnCheckedChangeListener((button, on) -> {
+            if (restoring[0]) { return; }
+            try {
+                DateSettings.validateToggle(feature.key(), on);
+            } catch (RuntimeException error) {
+                restoring[0] = true;
+                toggle.setChecked(!on);
+                restoring[0] = false;
+                Toast.makeText(act, "开关未更改：" + error.getMessage(), Toast.LENGTH_LONG).show();
+                return;
+            }
             Config.set(feature.key(), on);
             if (options != null) { options.setVisibility(on ? View.VISIBLE : View.GONE); }
+            if (Config.K_ZONEID.equals(feature.key())) { DateSettings.refreshDate(group.getRootView()); }
             Logx.i("插件设置：" + feature.key() + " → " + on);
         });
         label.setOnClickListener(v -> toggle.toggle());
@@ -111,7 +123,8 @@ public final class SettingsInjector {
     }
 
     private static View featureOptions(Activity act, String key) {
-        if (Config.K_ZONEID.equals(key)) { return DateSettings.create(act); }
+        if (Config.K_DATE.equals(key)) { return DateSettings.createDate(act); }
+        if (Config.K_ZONEID.equals(key)) { return DateSettings.createRegion(act); }
         if (Config.K_PREMIUM.equals(key)) { return levelOptions(act); }
         if (Config.K_DEBUG.equals(key)) {
             TextView open = field(act, "打开调试菜单");

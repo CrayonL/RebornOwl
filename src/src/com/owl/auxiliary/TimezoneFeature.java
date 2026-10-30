@@ -20,21 +20,28 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
-/** 6.103.6 的宿主时钟适配；日期与时区在重启宿主时统一应用。 */
+/** 两个独立开关共用一个宿主时钟，重启时应用各自的配置。 */
 public class TimezoneFeature extends Feature {
-    @Override
-    public String key() { return Config.K_ZONEID; }
+    private final boolean date;
+
+    public TimezoneFeature(boolean date) { this.date = date; }
 
     @Override
-    public String label() { return "日期时区"; }
+    public String key() { return date ? Config.K_DATE : Config.K_ZONEID; }
+
+    @Override
+    public String label() { return date ? "日期" : "地区"; }
 
     @Override
     public boolean defaultOn() { return true; }
 
     @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
-        ZoneId zone = ZoneId.of(Config.getStr(Config.P_TIMEZONE, Config.ZONE_DEFAULT));
-        Clock clock = DateOverride.shifted(Clock.systemUTC(), Config.getStr(Config.P_DATE, ""), zone);
+        // 两项均开启时由日期项安装一次，避免重复 Hook 同一组方法。
+        if (!date && Config.getOr(Config.K_DATE, true)) { return; }
+        Clock clock = DateOverride.configured(Clock.systemDefaultZone(),
+                Config.activeDate(), Config.activeRegion());
+        ZoneId zone = clock.getZone();
         Class<?> host = XposedHelpers.findClass(Targets.C_HOST_CLOCK, lpp.classLoader);
         Class<?> instant = XposedHelpers.findClass(Targets.C_HOST_INSTANT, lpp.classLoader);
         Class<?> kotlinZone = XposedHelpers.findClass(Targets.C_TIME_ZONE, lpp.classLoader);
@@ -53,7 +60,7 @@ public class TimezoneFeature extends Feature {
         for (Method method : methods) {
             XposedBridge.hookMethod(method, hook);
         }
-        Logx.i("日期时区：已适配宿主时钟 " + host.getName() + "，时区=" + zone
+        Logx.i("日期/地区：已适配宿主时钟 " + host.getName() + "，时区=" + zone
                 + "，日期=" + LocalDate.now(clock) + "；单调计时不变");
     }
 

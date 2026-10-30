@@ -17,7 +17,8 @@ public final class FeatureManager {
         ALL.add(new MusicUnlockFeature());
         ALL.add(new PremiumFeature());
         ALL.add(new InfiniteTimeFeature());
-        ALL.add(new TimezoneFeature());
+        ALL.add(new TimezoneFeature(true));
+        ALL.add(new TimezoneFeature(false));
         ALL.add(new CorrectFeature());
         ALL.add(new UnlockLessonsFeature());
         ALL.add(new SkipFeature());
