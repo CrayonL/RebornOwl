@@ -18,7 +18,7 @@ public final class Targets {
     private Targets() {}
 
     public static final String HOST_PKG = "com.duolingo";
-    public static final String MODULE_PKG = "com.owl.reborn";
+    public static final String MODULE_PKG = "io.github.crayonl.rebornowl";
 
     // ---------- 硬编码类名（兜底） ----------
     public static final String C_PLUS_VIEW_MODEL = "com.duolingo.plus.dashboard.PlusViewModel";
@@ -112,7 +112,15 @@ public final class Targets {
     public static final String S_SESSION_DEBUG = "SessionDebugSettings(allowSessionOverride=";
     public static final String S_MAX_SESSION_LEN = ", maxSessionLength=";
     // 解锁关卡
-    public static final String S_RETAINED_TASK = "RetainedObjectTrackingStartupTask";
+    public static final String S_PATH_LEVEL = "GenericPathLevel(id=";
+    public static final String S_PATH_SESSION_STATE = "PathLevelSessionState(level=";
+    public static final String C_NEW_PATH_CONVERTER = "cur";
+    public static final String C_NEW_PATH_POPUP = "qvr";
+    public static final String C_PATH_SECTION_FILTER = "cao";
+    public static final String C_PATH_SECTION = "com.duolingo.data.path.common.CoursePathSection";
+    public static final String C_PATH_UNIT = "wzh";
+    public static final String C_PATH_VECTOR = "com.duolingo.core.pcollections.migration.PVector";
+    public static final String C_PATH_LEVEL_STATE = "com.duolingo.data.path.common.PathLevelState";
 
     // ---------- 拽姐视频通话 ----------
     /**

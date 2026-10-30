@@ -28,7 +28,7 @@ import android.widget.Toast;
 public final class ModuleActivity extends Activity {
     static final String SOURCE_URL = "https://github.com/CrayonL/RebornOwl";
     private static final String GITHUB_PACKAGE = "com.github.android";
-    private static final String LAUNCHER = "com.owl.reborn.Launcher";
+    private static final String LAUNCHER = Targets.MODULE_PKG + ".Launcher";
     private static final int BLUE = 0xFF1CB0F6;
     private static final int DARK_BACKGROUND = 0xFF131F24;
     private static final int LIGHT_FOREGROUND = 0xFF3C3C3C;

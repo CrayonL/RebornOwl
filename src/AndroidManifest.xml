@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.owl.reborn"
-    android:versionCode="16"
-    android:versionName="0.0.1">
+    package="io.github.crayonl.rebornowl"
+    android:versionCode="30"
+    android:versionName="1">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
     <queries>
@@ -24,7 +24,7 @@
             </intent-filter>
         </activity>
         <activity-alias
-            android:name="com.owl.reborn.Launcher"
+            android:name="io.github.crayonl.rebornowl.Launcher"
             android:targetActivity="com.owl.auxiliary.ModuleActivity"
             android:enabled="true"
             android:exported="true">

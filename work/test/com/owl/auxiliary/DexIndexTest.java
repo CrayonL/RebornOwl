@@ -24,7 +24,7 @@ public class DexIndexTest {
                 "TimedMultiSessionPractice(sessionXp=",
                 "TimedMatchPractice(initialSessionTime=",
                 "User(adsConfig=", "Music(courseSummary=",
-                ", maxSessionLength=", "RetainedObjectTrackingStartupTask",
+                ", maxSessionLength=", Targets.S_PATH_LEVEL, Targets.S_PATH_SESSION_STATE,
         };
 
         File[] files = new File(dir).listFiles((d, n) -> n.endsWith(".dex"));

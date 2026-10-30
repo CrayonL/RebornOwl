@@ -5,9 +5,11 @@ param(
     [Parameter(Mandatory)][string]$JdkRoot,
     [Parameter(Mandatory)][string]$DexDirectory,
     [Parameter(Mandatory)][string]$PythonPath,
-    [Parameter(Mandatory)][string]$DeviceSerial
+    [string]$DeviceSerial,
+    [switch]$Offline
 )
 $ErrorActionPreference = 'Stop'
+if (-not $Offline -and -not $DeviceSerial) { throw '真机测试需要 DeviceSerial；离线验证请显式使用 -Offline' }
 
 function Invoke-TestCommand {
     param([string]$Program, [string[]]$Arguments)
@@ -50,6 +52,7 @@ foreach ($test in $tests) {
 }
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_contract_test.py", $DexDirectory)
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_date_contract_test.py", $DexDirectory)
+Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_unlock_contract_test.py", $DexDirectory)
 foreach ($test in @('premium_feedback_test.py', 'source_link_test.py')) {
     Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/$test", '--sdk', $SdkRoot, '--jdk', $JdkRoot)
 }
@@ -59,6 +62,10 @@ New-Item -ItemType Directory -Path $dex | Out-Null
 $minSdk = $manifest.manifest.'uses-sdk'.GetAttribute('minSdkVersion', 'http://schemas.android.com/apk/res/android')
 $classFiles = Get-ChildItem -LiteralPath $classes -Filter '*.class' -Recurse | ForEach-Object FullName
 Invoke-TestCommand "$JdkRoot/bin/java.exe" (@('-cp', "$SdkRoot/build-tools/36.1.0/lib/d8.jar", 'com.android.tools.r8.D8', '--min-api', $minSdk, '--output', $dex, '--lib', $platform, '--classpath', $modern, '--classpath', $xposed) + $classFiles)
+if ($Offline) {
+    Write-Host 'OFFLINE_TESTS_PASS（未连接手机；ART、实际 Hook 和课程进入仍待真机验证）'
+    return
+}
 $remoteDex = '/data/local/tmp/owl-entry-test.dex'
 Invoke-TestCommand $adb @('-s', $DeviceSerial, 'push', "$dex/classes.dex", $remoteDex)
 # 原包 API JAR 仅用于编译；入口测试在 ART 上使用手机真实框架类。
