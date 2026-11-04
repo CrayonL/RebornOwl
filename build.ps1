@@ -71,7 +71,7 @@ New-Item -ItemType Directory -Path $classes, $dex, $out -Force | Out-Null
 $version = $manifest.manifest.GetAttribute('versionName', 'http://schemas.android.com/apk/res/android')
 $versionCode = $manifest.manifest.GetAttribute('versionCode', 'http://schemas.android.com/apk/res/android')
 $minSdk = $manifest.manifest.'uses-sdk'.GetAttribute('minSdkVersion', 'http://schemas.android.com/apk/res/android')
-$apk = Join-Path $out "owl-reborn-$version-code$versionCode-duolingo-6.103.6.apk"
+$apk = Join-Path $out "owl-reborn-$version-code$versionCode.apk"
 if (Test-Path -LiteralPath $apk) { throw "输出已存在，请先保留或移走：$apk" }
 
 Invoke-Checked "$tools/aapt2.exe" @('compile', '--dir', "$PSScriptRoot/src/res", '--no-crunch', '-o', "$build/resources.zip")

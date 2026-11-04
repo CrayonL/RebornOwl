@@ -54,7 +54,7 @@ Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/ho
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_date_contract_test.py", $DexDirectory)
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_music_contract_test.py", $DexDirectory)
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_unlock_contract_test.py", $DexDirectory)
-foreach ($test in @('premium_feedback_test.py', 'source_link_test.py', 'clock_hook_test.py', 'music_hook_test.py')) {
+foreach ($test in @('premium_feedback_test.py', 'source_link_test.py', 'clock_hook_test.py', 'music_hook_test.py', 'compatibility_notice_test.py')) {
     Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/$test", '--sdk', $SdkRoot, '--jdk', $JdkRoot)
 }
 $dex = Join-Path $classes 'dex'

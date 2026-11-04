@@ -43,6 +43,8 @@ public final class SettingsInjector {
     private static final int TITLE_LOGO_DP = 28;
     private static final int FOOTER_BUTTON_DP = 52;
     private static final int FOOTER_GAP_DP = 8;
+    private static final int NOTICE_WIDTH_DP = 320;
+    private static final int NOTICE_TEXT_SP = 16;
     private static Toast levelToast;
 
     private SettingsInjector() {}
@@ -53,7 +55,10 @@ public final class SettingsInjector {
                 @Override
                 public void afterHookedMethod(MethodHookParam param) {
                     Activity act = (Activity) param.thisObject;
-                    act.getWindow().getDecorView().post(() -> FloatBall.attach(act));
+                    act.getWindow().getDecorView().post(() -> {
+                        FloatBall.attach(act);
+                        CompatibilityNotice.onResume(act);
+                    });
                 }
             });
             Logx.i("设置悬浮球：已挂接 Activity.onPostResume（不依赖调试模式）");
@@ -69,6 +74,38 @@ public final class SettingsInjector {
         }
         Dialog dialog = showPanel(act, Brand.NAME, body);
         Logx.i("插件设置：已从悬浮球打开 @" + act.getClass().getSimpleName());
+        return dialog;
+    }
+
+    static Dialog showCompatibilityNotice(Activity act, String message) {
+        Dialog dialog = new Dialog(act);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout panel = column(act);
+        int padding = dp(act, PADDING_DP);
+        panel.setPadding(padding, padding, padding, padding);
+        panel.setBackground(shape(act, night(act) ? DARK_BG : Color.WHITE, RADIUS_DP));
+        panel.addView(panelHeading(act, "当前版本尚未适配"));
+        TextView body = action(act, message);
+        body.setTextSize(NOTICE_TEXT_SP);
+        body.setBackground(null);
+        body.setFocusable(false);
+        body.setPadding(dp(act, 4), padding, dp(act, 4), padding);
+        ScrollView scroll = new ScrollView(act);
+        scroll.addView(body);
+        panel.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView dismiss = footerButton(act, "知道了", "SolidBlueButton");
+        dismiss.setOnClickListener(view -> dialog.dismiss());
+        panel.addView(dismiss, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(act, FOOTER_BUTTON_DP)));
+        dialog.setContentView(panel);
+        dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        dialog.setCanceledOnTouchOutside(true);
+        bindLifetime(act, dialog);
+        dialog.show();
+        int width = Math.min(dp(act, NOTICE_WIDTH_DP), act.getResources().getDisplayMetrics().widthPixels);
+        dialog.getWindow().setGravity(Gravity.CENTER);
+        dialog.getWindow().setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
         return dialog;
     }
 
