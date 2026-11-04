@@ -42,11 +42,45 @@ public class TimezoneFeature extends Feature {
         Clock clock = DateOverride.configured(Clock.systemDefaultZone(),
                 Config.activeDate(), Config.activeRegion());
         ZoneId zone = clock.getZone();
-        Class<?> host = XposedHelpers.findClass(Targets.C_HOST_CLOCK, lpp.classLoader);
-        Class<?> instant = XposedHelpers.findClass(Targets.C_HOST_INSTANT, lpp.classLoader);
         Class<?> kotlinZone = XposedHelpers.findClass(Targets.C_TIME_ZONE, lpp.classLoader);
+        List<Method> methods = resolveClock(lpp.classLoader, kotlinZone);
+        Method instantMethod = methods.get(0);
+        Class<?> instant = instantMethod.getReturnType();
         Constructor<?> instantConstructor = instant.getConstructor(long.class, int.class);
         Object zoneValue = kotlinZone.getConstructor(ZoneId.class).newInstance(zone);
+        HostClockHook hook = new HostClockHook(clock, instantConstructor, zoneValue);
+        for (Method method : methods) {
+            XposedBridge.hookMethod(method, hook);
+        }
+        Logx.i("日期/地区：已适配宿主时钟 " + instantMethod.getDeclaringClass().getName() + "，时区=" + zone
+                + "，日期=" + LocalDate.now(clock) + "；单调计时不变");
+    }
+
+    private static List<Method> resolveClock(ClassLoader loader, Class<?> kotlinZone) {
+        List<Method> resolved = null;
+        IllegalStateException failure = new IllegalStateException("未找到兼容的宿主时钟");
+        for (String name : Targets.HOST_CLOCKS.values()) {
+            final List<Method> candidate;
+            try {
+                Class<?> host = Class.forName(name, false, loader);
+                candidate = resolveMethods(host, kotlinZone);
+            } catch (ReflectiveOperationException error) {
+                failure.addSuppressed(error);
+                continue;
+            }
+            if (resolved != null) {
+                throw new IllegalStateException("宿主时钟匹配不唯一：" + name);
+            }
+            resolved = candidate;
+        }
+        if (resolved == null) { throw failure; }
+        return resolved;
+    }
+
+    private static List<Method> resolveMethods(Class<?> host, Class<?> kotlinZone)
+            throws ReflectiveOperationException {
+        Class<?> instant = host.getDeclaredMethod("a").getReturnType();
+        instant.getConstructor(long.class, int.class);
         Map<String, Class<?>> signatures = new LinkedHashMap<>();
         signatures.put("a", instant);
         signatures.put("c", LocalDateTime.class);
@@ -55,24 +89,14 @@ public class TimezoneFeature extends Feature {
         signatures.put("f", ZoneId.class);
         signatures.put("g", Instant.class);
         signatures.put("h", LocalDate.class);
-        List<Method> methods = resolveMethods(host, signatures);
-        HostClockHook hook = new HostClockHook(clock, instantConstructor, zoneValue);
-        for (Method method : methods) {
-            XposedBridge.hookMethod(method, hook);
-        }
-        Logx.i("日期/地区：已适配宿主时钟 " + host.getName() + "，时区=" + zone
-                + "，日期=" + LocalDate.now(clock) + "；单调计时不变");
-    }
-
-    private static List<Method> resolveMethods(Class<?> host, Map<String, Class<?>> signatures)
-            throws ReflectiveOperationException {
         List<Method> methods = new ArrayList<>();
         for (Map.Entry<String, Class<?>> entry : signatures.entrySet()) {
             Class<?>[] parameters = "e".equals(entry.getKey())
                     ? new Class<?>[]{TimeZone.class} : new Class<?>[0];
             Method method = host.getDeclaredMethod(entry.getKey(), parameters);
-            if (Modifier.isStatic(method.getModifiers()) || method.getReturnType() != entry.getValue()) {
-                throw new IllegalStateException("宿主时钟签名不匹配：" + method);
+            if (Modifier.isStatic(method.getModifiers()) || Modifier.isAbstract(method.getModifiers())
+                    || method.getReturnType() != entry.getValue()) {
+                throw new NoSuchMethodException("宿主时钟签名不匹配：" + method);
             }
             methods.add(method);
         }

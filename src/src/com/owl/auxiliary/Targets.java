@@ -1,5 +1,9 @@
 package com.owl.auxiliary;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * 版本敏感层：所有可能随 Duolingo 版本变化的目标集中于此。
  *
@@ -38,9 +42,14 @@ public final class Targets {
     public static final String C_SETTINGS_ACTIVITY = "com.duolingo.settings.SettingsActivity";
     public static final String C_LAUNCH_ACTIVITY = "com.duolingo.splash.LaunchActivity";
     public static final String C_TIME_ZONE = "kotlinx.datetime.TimeZone";
-    /** 6.103.6 统一业务时钟及 Kotlin Instant；由 DEX 契约测试核对。 */
-    public static final String C_HOST_CLOCK = "bb7";
-    public static final String C_HOST_INSTANT = "nqk";
+    /** 兼容版本的唯一来源；按适配顺序维护最近五版，时钟仍须通过完整签名校验。 */
+    public static final Map<String, String> HOST_CLOCKS;
+    static {
+        Map<String, String> clocks = new LinkedHashMap<>();
+        clocks.put("6.103.6", "bb7");
+        clocks.put("6.104.4", "cf7");
+        HOST_CLOCKS = Collections.unmodifiableMap(clocks);
+    }
     public static final String C_SUBSCRIPTION_PREFIX = "com.duolingo.data.user.Subscrib";
 
     // ---------- 拽姐视频通话（无法解锁——服务端限制；入口改道并入会员解锁） ----------

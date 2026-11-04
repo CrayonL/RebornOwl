@@ -95,12 +95,25 @@ public class ClockHookProbe {
     public static void main(String[] args) throws Throwable {
         Logx.setMirror(false);
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        if (args[0].equals("failure")) { verifyFailure(); return; }
         for (boolean date : new boolean[]{false, true}) {
-            for (boolean region : new boolean[]{false, true}) { verify(date, region); }
+            for (boolean region : new boolean[]{false, true}) { verify(date, region, args); }
         }
         System.out.println("PASS: 四组合实际模块回调、无重复 Hook、日期单开为昨天、地区单开不改时间戳");
     }
-    private static void verify(boolean date, boolean region) throws Throwable {
+    private static void verifyFailure() throws Throwable {
+        Config.set(Config.K_DATE, true);
+        XC_LoadPackage.LoadPackageParam lpp = new XC_LoadPackage.LoadPackageParam();
+        lpp.classLoader = ClockHookProbe.class.getClassLoader();
+        try {
+            new TimezoneFeature(true).apply(lpp);
+            throw new AssertionError("不兼容或歧义时钟必须失败");
+        } catch (IllegalStateException expected) {
+            check(XposedBridge.hooks.isEmpty(), "失败前不得安装部分 Hook");
+        }
+        System.out.println("PASS: 不兼容或歧义时钟明确失败，未安装任何 Hook");
+    }
+    private static void verify(boolean date, boolean region, String[] expectedTypes) throws Throwable {
         XposedBridge.hooks.clear();
         Config.set(Config.K_DATE, date); Config.set(Config.K_ZONEID, region);
         Config.setStr(Config.P_TIMEZONE, "America/New_York");
@@ -116,6 +129,8 @@ public class ClockHookProbe {
         }
         check(XposedBridge.hooks.size() == (date || region ? 7 : 0), "只安装一组七个时钟回调");
         if (!date && !region) { return; }
+        check(XposedBridge.hooks.keySet().stream().allMatch(m ->
+                m.getDeclaringClass().getName().equals(expectedTypes[0])), "仅挂接目标版本时钟");
         Instant instant = (Instant) XposedBridge.read("g");
         if (!date) { check(!instant.isBefore(before) && !instant.isAfter(Instant.now()), "真实时间戳不偏移"); }
         LocalDate expected = date ? yesterday : LocalDate.now(zone);
@@ -124,12 +139,17 @@ public class ClockHookProbe {
         check(((LocalDateTime) XposedBridge.read("c")).toLocalDate().equals(expected), "日期时间保持一致");
         check(XposedBridge.read("f").equals(zone), "日期单开保留手机原时区");
         check(((kotlinx.datetime.TimeZone) XposedBridge.read("d")).value.equals(zone), "Kotlin 地区一致");
-        check(Math.abs(Duration.between(instant, ((nqk) XposedBridge.read("a")).value).toMillis()) < 1000,
+        Object kotlinInstant = XposedBridge.read("a");
+        check(kotlinInstant.getClass().getName().equals(expectedTypes[1]), "使用目标方法实际返回类型");
+        Instant kotlinValue = (Instant) kotlinInstant.getClass().getField("value").get(kotlinInstant);
+        check(Math.abs(Duration.between(instant, kotlinValue).toMillis()) < 1000,
                 "Kotlin 时间戳一致");
         TimeZone tokyo = TimeZone.getTimeZone("Asia/Tokyo");
         Calendar calendar = (Calendar) XposedBridge.read("e", tokyo);
         check(calendar.getTimeZone().equals(tokyo), "尊重调用者显式日历时区");
         check(Math.abs(calendar.getTimeInMillis() - instant.toEpochMilli()) < 1000, "日历使用同一时间偏移");
+        Calendar defaultCalendar = (Calendar) XposedBridge.read("e", new Object[]{null});
+        check(defaultCalendar.getTimeZone().toZoneId().equals(zone), "未指定日历时区时使用配置地区");
     }
     private static void check(boolean ok, String reason) {
         if (!ok) { throw new AssertionError(reason); }
@@ -143,11 +163,26 @@ def run(command):
     subprocess.run(command, check=True, timeout=60)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--sdk', type=Path, required=True)
-    parser.add_argument('--jdk', type=Path, required=True)
-    args = parser.parse_args()
+def cases():
+    old_clock = FIXTURES['bb7.java']
+    new_clock = old_clock.replace('bb7', 'cf7').replace('nqk', 'hzk')
+    new_instant = FIXTURES['nqk.java'].replace('nqk', 'hzk')
+    collision = 'public class bb7 extends ClassValue<Object> { public Object computeValue(Class<?> c) { return null; } }'
+    new = {'bb7.java': collision, 'nqk.java': 'public class nqk {}',
+           'cf7.java': new_clock, 'hzk.java': new_instant}
+    return [
+        ('6.103.6', {}, ['bb7', 'nqk']),
+        ('6.104.4', new, ['cf7', 'hzk']),
+        ('missing', {'bb7.java': None, 'nqk.java': None}, ['failure']),
+        ('wrong-return', dict(new, **{'cf7.java': new_clock.replace('Instant g()', 'String g()')}), ['failure']),
+        ('wrong-instant', dict(new, **{'hzk.java': 'public class hzk {}'}), ['failure']),
+        ('static-method', dict(new, **{'cf7.java': new_clock.replace('Instant g()', 'static Instant g()')}), ['failure']),
+        ('ambiguous', {'cf7.java': new_clock, 'hzk.java': new_instant}, ['failure']),
+    ]
+
+
+def run_case(args, case):
+    label, overrides, probe_args = case
     root = Path(__file__).resolve().parents[2]
     dependencies = [args.sdk / 'platforms/android-35/android.jar',
                     root / 'work/libxposed-api-101.0.1.jar', root / 'work/xposed-api.jar']
@@ -159,13 +194,24 @@ def main():
         sources = list((root / 'src/src').rglob('*.java'))
         compiler = [str(args.jdk / 'bin/javac.exe'), '-encoding', 'UTF-8', '-cp', classpath, '-d', str(classes)]
         run(compiler + list(map(str, sources)))
-        for name, content in FIXTURES.items():
+        fixtures = {name: content for name, content in dict(FIXTURES, **overrides).items() if content is not None}
+        for name, content in fixtures.items():
             target = folder / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding='utf-8')
-        run(compiler + [str(folder / name) for name in FIXTURES])
+        run(compiler + [str(folder / name) for name in fixtures])
         run([str(args.jdk / 'bin/java.exe'), '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8',
-             '-cp', classpath, 'ClockHookProbe'])
+             '-cp', classpath, 'ClockHookProbe'] + probe_args)
+        print('CLOCK_CASE_PASS:', label, flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--sdk', type=Path, required=True)
+    parser.add_argument('--jdk', type=Path, required=True)
+    args = parser.parse_args()
+    for case in cases():
+        run_case(args, case)
 
 
 if __name__ == '__main__':
