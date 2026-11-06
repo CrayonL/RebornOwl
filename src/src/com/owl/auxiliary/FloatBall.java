@@ -195,7 +195,7 @@ public final class FloatBall extends FrameLayout {
             act.startActivity(intent);
             Logx.i("调试模式：已请求打开 " + Targets.C_DEBUG_ACTIVITY);
         } catch (Throwable t) {
-            Logx.w("调试模式：打开调试菜单失败", t);
+            FeatureDiagnostics.failure(Config.K_DEBUG, "调试模式：打开调试菜单失败", t);
             Toast.makeText(act, "打开调试菜单失败：" + t, Toast.LENGTH_LONG).show();
         }
     }

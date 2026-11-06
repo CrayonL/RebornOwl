@@ -5,7 +5,8 @@ import sys
 from host_contract_test import methods, method_exists, constructor, require
 from dexdump import load, u16, u32
 
-HOSTS = {'6.103.6': ('Lbb7;', 'Lnqk;'), '6.104.4': ('Lcf7;', 'Lhzk;')}
+HOSTS = {'6.103.6': ('Lbb7;', 'Lnqk;'), '6.104.4': ('Lcf7;', 'Lhzk;'),
+         '6.104.5-china': ('La07;', 'Lj0k;')}
 
 
 def main():

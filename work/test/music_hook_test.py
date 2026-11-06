@@ -124,14 +124,9 @@ def fixtures():
         }''')
     sources[ACCESS.replace('.', '/') + '.java'] = '''package com.duolingo.core.music.licensed;
     public enum LicensedMusicAccess { FULL, TASTER, NONE, OTHER }'''
-    sources['com/owl/auxiliary/Locator.java'] = '''package com.owl.auxiliary;
-    public class Locator {
-        public static Class<?> byKeyOrName(String key, String fallback, ClassLoader loader) throws Exception {
-            return Class.forName("nt8", true, loader);
-        }
-        public static Class<?> findByName(String name, ClassLoader loader) {
-            try { return Class.forName(name, true, loader); } catch (ClassNotFoundException e) { return null; }
-        }
+    sources['com/owl/auxiliary/DexIndex.java'] = '''package com.owl.auxiliary;
+    public class DexIndex {
+        public static String findClassContaining(String key) { return "Lnt8;"; }
     }'''
     for model in MODELS:
         package, _, name = model.rpartition('.')

@@ -36,6 +36,7 @@ public final class Config {
     public static final String P_FLOAT_Y  = "float_pos_y";
     /** 会员等级：super / max。 */
     public static final String P_LEVEL    = "premium_level";
+    public static final String P_IGNORED_PROBLEM = "ignored_problem";
 
     /** 会员等级取值。 */
     public static final String LV_SUPER = "super";
@@ -77,9 +78,13 @@ public final class Config {
             }
             // 外部覆盖文件（便于 PC 端 adb 写入开关做调试）
             if (sAltFile != null && sAltFile.isFile()) {
+                String ignored = P.getProperty(P_IGNORED_PROBLEM);
                 try (FileInputStream in = new FileInputStream(sAltFile)) {
                     P.load(in);
                 }
+                // 提醒偏好以内部配置为准，外部调试文件不能覆盖用户的新选择。
+                if (ignored == null) { P.remove(P_IGNORED_PROBLEM); }
+                else { P.setProperty(P_IGNORED_PROBLEM, ignored); }
                 Logx.i("已应用外部覆盖配置: " + sAltFile);
             }
             if (!P.containsKey(K_DATE)) {
@@ -159,6 +164,18 @@ public final class Config {
         setStr(key, Integer.toString(value));
     }
 
+    static synchronized boolean suppressProblem(String fingerprint) {
+        load();
+        String previous = P.getProperty(P_IGNORED_PROBLEM);
+        P.setProperty(P_IGNORED_PROBLEM, fingerprint);
+        if (!store(sFile, false)) {
+            if (previous == null) { P.remove(P_IGNORED_PROBLEM); }
+            else { P.setProperty(P_IGNORED_PROBLEM, previous); }
+            return false;
+        }
+        return true;
+    }
+
     private static void save() {
         store(sFile, false);
         if (sAltFile != null && sAltFile.isFile()) {
@@ -166,9 +183,9 @@ public final class Config {
         }
     }
 
-    private static void store(File f, boolean quiet) {
+    private static boolean store(File f, boolean quiet) {
         if (f == null) {
-            return;
+            return false;
         }
         try {
             File parent = f.getParentFile();
@@ -179,10 +196,12 @@ public final class Config {
             try (FileOutputStream out = new FileOutputStream(f)) {
                 P.store(out, "Owl Auxiliary config");
             }
+            return true;
         } catch (Throwable t) {
             if (!quiet) {
                 Logx.w("Config 保存失败: " + f, t);
             }
+            return false;
         }
     }
 }

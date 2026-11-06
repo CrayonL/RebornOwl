@@ -78,9 +78,9 @@ public final class DebugMenuGuard {
     private static void hookDebugOnCreate(XC_LoadPackage.LoadPackageParam lpp, String cls) {
         try {
             XposedHelpers.findAndHookMethod(cls, lpp.classLoader, "onCreate",
-                    Bundle.class, new XC_MethodHook() {
+                    Bundle.class, new DiagnosticHook(Config.K_DEBUG) {
                         @Override
-                        public void afterHookedMethod(MethodHookParam param) {
+                        public void after(MethodHookParam param) {
                             sOpenedAt = SystemClock.uptimeMillis();
                             Logx.i("调试模式：调试界面 onCreate（准入拦截已就绪）");
                         }
@@ -93,9 +93,9 @@ public final class DebugMenuGuard {
     private static void hookFinish(XC_LoadPackage.LoadPackageParam lpp, String method) {
         try {
             XposedHelpers.findAndHookMethod("android.app.Activity", lpp.classLoader,
-                    method, new XC_MethodHook() {
+                    method, new DiagnosticHook(Config.K_DEBUG) {
                         @Override
-                        public void beforeHookedMethod(MethodHookParam param) {
+                        public void before(MethodHookParam param) {
                             try {
                                 if (!(param.thisObject instanceof Activity)) {
                                     return;
@@ -113,13 +113,14 @@ public final class DebugMenuGuard {
                                     Logx.i("调试模式：已拦截 " + name + "." + method
                                             + "（准入校验触发的自关闭）");
                                 }
-                            } catch (Throwable ignored) {
+                            } catch (Throwable error) {
+                                FeatureDiagnostics.failure(Config.K_DEBUG, "调试菜单关闭拦截失败", error);
                             }
                         }
                     });
             Logx.i("调试模式：已挂接 Activity." + method + "（拦截调试界面自关闭）");
         } catch (Throwable t) {
-            Logx.w("调试模式：挂接 Activity." + method + " 失败", t);
+            FeatureDiagnostics.failure(Config.K_DEBUG, "调试模式：挂接 Activity." + method + " 失败", t);
         }
     }
 

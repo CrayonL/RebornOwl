@@ -21,7 +21,7 @@ final class UnlockPopupData {
     private final Method with;
 
     UnlockPopupData(Class<?> section, Class<?> unit, Class<?> vector) throws ReflectiveOperationException {
-        sectionConstructor = section.getConstructor(int.class, String.class, vector);
+        sectionConstructor = sectionConstructor(section, vector);
         sectionId = section.getField("a");
         sectionIndex = section.getField("b");
         units = section.getField("c");
@@ -30,40 +30,87 @@ final class UnlockPopupData {
         with = vector.getMethod("with", int.class, Object.class);
     }
 
+    private static Constructor<?> sectionConstructor(Class<?> section, Class<?> vector)
+            throws NoSuchMethodException {
+        for (Constructor<?> ctor : section.getConstructors()) {
+            Class<?>[] types = ctor.getParameterTypes();
+            if (java.util.Arrays.equals(types, new Class<?>[]{int.class, String.class, vector})
+                    || java.util.Arrays.equals(types, new Class<?>[]{int.class, vector, String.class})) { return ctor; }
+        }
+        throw new NoSuchMethodException("路径阶段构造参数不匹配");
+    }
+
+    static void check(ClassLoader loader) throws ReflectiveOperationException {
+        Class<?> section = Class.forName(Targets.C_PATH_SECTION, false, loader);
+        Class<?> vector = Class.forName(Targets.C_PATH_VECTOR, false, loader);
+        unit(loader, section, vector);
+        section.getMethod("b");
+        popup(loader);
+        sectionFilter(loader, section);
+    }
+
+    private static Class<?> unit(ClassLoader loader, Class<?> section, Class<?> vector) {
+        return Locator.byContract(loader, Targets.C_PATH_UNITS, type -> new UnlockPopupData(section, type, vector));
+    }
+
+    private static Method popup(ClassLoader loader) {
+        String[] names = DexIndex.findClassesContaining(Targets.S_PATH_POPUP).stream()
+                .map(Locator::descToName).distinct().toArray(String[]::new);
+        Class<?> type = Locator.byContract(loader, names, candidate -> candidate.getDeclaredMethod("invokeSuspend", Object.class));
+        try { return type.getDeclaredMethod("invokeSuspend", Object.class); }
+        catch (NoSuchMethodException error) { throw new IllegalStateException(error); }
+    }
+
+    private static Method sectionFilter(ClassLoader loader, Class<?> section) {
+        Class<?> type = Locator.byContract(loader, Targets.C_PATH_SECTION_FILTERS,
+                candidate -> filterMethod(candidate, section));
+        return filterMethod(type, section);
+    }
+
+    private static Method filterMethod(Class<?> type, Class<?> section) {
+        Method found = null;
+        for (Method method : type.getDeclaredMethods()) {
+            Class<?>[] args = method.getParameterTypes();
+            if (args.length != 3 || args[0] != section || method.getReturnType() != section
+                    || !args[1].getName().equals("com.duolingo.data.course.Subject")
+                    || !(args[2].getName().equals("o8j") || args[2].getName().equals("udi"))) { continue; }
+            if (found != null) { throw new IllegalStateException("路径阶段过滤方法不唯一"); }
+            found = method;
+        }
+        if (found == null) { throw new IllegalStateException("路径阶段过滤方法缺失"); }
+        return found;
+    }
+
     static void install(ClassLoader loader, UnlockLessonsFeature.SessionCopy copier)
             throws ReflectiveOperationException {
         Class<?> section = Class.forName(Targets.C_PATH_SECTION, false, loader);
-        Class<?> unit = Class.forName(Targets.C_PATH_UNIT, false, loader);
         Class<?> vector = Class.forName(Targets.C_PATH_VECTOR, false, loader);
+        Class<?> unit = unit(loader, section, vector);
         UnlockPopupData data = new UnlockPopupData(section, unit, vector);
         ThreadLocal<Scope> scope = new ThreadLocal<>();
-        Class<?> popup = Class.forName(Targets.C_NEW_PATH_POPUP, false, loader);
-        XposedBridge.hookMethod(popup.getDeclaredMethod("invokeSuspend", Object.class), new XC_MethodHook() {
+        XposedBridge.hookMethod(popup(loader), new DiagnosticHook(Config.K_UNLOCK) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 param.setObjectExtra(PREVIOUS_SCOPE, scope.get());
                 scope.set(new Scope());
             }
             @Override
-            public void afterHookedMethod(MethodHookParam param) {
+            public void after(MethodHookParam param) {
                 Scope previous = (Scope) param.getObjectExtra(PREVIOUS_SCOPE);
                 if (previous == null) { scope.remove(); } else { scope.set(previous); }
             }
         });
         Method activeLevel = section.getMethod("b");
         hookAnchor(activeLevel, scope);
-        Class<?> filter = Class.forName(Targets.C_PATH_SECTION_FILTER, false, loader);
-        Method method = filter.getMethod("b", section,
-                Class.forName("com.duolingo.data.course.Subject", false, loader),
-                Class.forName("o8j", false, loader));
+        Method method = sectionFilter(loader, section);
         data.hookSection(method, activeLevel, new PopupContext(scope, copier));
     }
 
     private void hookSection(Method method, Method activeLevel, PopupContext context) {
-        XposedBridge.hookMethod(method, new XC_MethodHook() {
+        XposedBridge.hookMethod(method, new DiagnosticHook(Config.K_UNLOCK) {
             private boolean reported;
             @Override
-            public void afterHookedMethod(MethodHookParam param) throws Throwable {
+            public void after(MethodHookParam param) throws Throwable {
                 Scope current = context.scope.get();
                 if (current == null || param.hasThrowable()) { return; }
                 Object original = param.getResult();
@@ -81,9 +128,9 @@ final class UnlockPopupData {
     }
 
     private static void hookAnchor(Method method, ThreadLocal<Scope> scope) {
-        XposedBridge.hookMethod(method, new XC_MethodHook() {
+        XposedBridge.hookMethod(method, new DiagnosticHook(Config.K_UNLOCK) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 Scope current = scope.get();
                 if (current != null && current.copy == param.thisObject) { param.setResult(current.anchor); }
             }
@@ -99,8 +146,10 @@ final class UnlockPopupData {
             Object copy = copyUnit(unit, copier);
             if (copy != unit) { result = with.invoke(result, index, copy); }
         }
-        return result == original ? section : sectionConstructor.newInstance(
-                sectionIndex.getInt(section), sectionId.get(section), result);
+        if (result == original) { return section; }
+        return sectionConstructor.getParameterTypes()[1] == String.class
+                ? sectionConstructor.newInstance(sectionIndex.getInt(section), sectionId.get(section), result)
+                : sectionConstructor.newInstance(sectionIndex.getInt(section), result, sectionId.get(section));
     }
 
     private Object copyUnit(Object unit, UnlockLessonsFeature.SessionCopy copier)

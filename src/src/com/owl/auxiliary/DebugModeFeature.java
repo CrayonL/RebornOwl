@@ -50,6 +50,26 @@ public class DebugModeFeature extends Feature {
     }
 
     @Override
+    public void check(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
+        Class<?> category = debugCategory(lpp.classLoader);
+        if (category.getMethod("getAllowOnReleaseBuilds").getReturnType() != boolean.class
+                || category.getMethod("getTitle").getReturnType() != String.class) {
+            throw new IllegalStateException("调试菜单：准入或标题方法签名不匹配");
+        }
+        Class.forName(Targets.C_DEBUG_ACTIVITY, false, lpp.classLoader);
+        Activity.class.getDeclaredMethod("onResume");
+        Activity.class.getMethod("finish");
+        Activity.class.getMethod("finishAndRemoveTask");
+    }
+
+    private static Class<?> debugCategory(ClassLoader loader) {
+        Class<?> category = Locator.findByName(Targets.C_DEBUG_CATEGORY, loader);
+        if (category == null) { category = Locator.findByName(Targets.C_DEBUG_CATEGORY_OLD, loader); }
+        if (category == null) { throw new IllegalStateException("调试模式：DebugCategory 缺失"); }
+        return category;
+    }
+
+    @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
         applyDebugCategory(lpp);
         DebugMenuGuard.install(lpp);
@@ -59,14 +79,7 @@ public class DebugModeFeature extends Feature {
     // ------------------------------------------------------------ 调试菜单放行
 
     private void applyDebugCategory(XC_LoadPackage.LoadPackageParam lpp) {
-        Class<?> dc = Locator.byName(Targets.C_DEBUG_CATEGORY, lpp.classLoader);
-        if (dc == null) {
-            dc = Locator.byName(Targets.C_DEBUG_CATEGORY_OLD, lpp.classLoader);
-        }
-        if (dc == null) {
-            Logx.w("调试模式：未找到 DebugCategory（新旧路径均失败）", null);
-            return;
-        }
+        Class<?> dc = debugCategory(lpp.classLoader);
         Logx.i("调试模式：命中 " + dc.getName()
                 + " 字段=" + fieldNames(dc) + "；标签表 " + DebugLabels.size() + " 条");
 
@@ -81,24 +94,24 @@ public class DebugModeFeature extends Feature {
     /** 让所有调试条目在 release 包可见（{@code getAllowOnReleaseBuilds()} 恒 true）。 */
     private void hookAllowOnRelease(Class<?> dc) {
         try {
-            XposedHelpers.findAndHookMethod(dc, "getAllowOnReleaseBuilds", new XC_MethodHook() {
+            XposedHelpers.findAndHookMethod(dc, "getAllowOnReleaseBuilds", new DiagnosticHook(Config.K_DEBUG) {
                 @Override
-                public void beforeHookedMethod(MethodHookParam param) {
+                public void before(MethodHookParam param) {
                     param.setResult(Boolean.TRUE);
                 }
             });
             Logx.i("调试模式：已 hook getAllowOnReleaseBuilds() → true（release 包全量可见）");
         } catch (Throwable t) {
-            Logx.w("调试模式：hook getAllowOnReleaseBuilds 失败", t);
+            FeatureDiagnostics.failure(Config.K_DEBUG, "调试模式：hook getAllowOnReleaseBuilds 失败", t);
         }
     }
 
     /** 标题英→中（调试菜单本地化）。 */
     private void hookTitle(Class<?> dc) {
         try {
-            XposedHelpers.findAndHookMethod(dc, "getTitle", new XC_MethodHook() {
+            XposedHelpers.findAndHookMethod(dc, "getTitle", new DiagnosticHook(Config.K_DEBUG) {
                 @Override
-                public void afterHookedMethod(MethodHookParam param) {
+                public void after(MethodHookParam param) {
                     Object r = param.getResult();
                     if (r instanceof String) {
                         String t = DebugLabels.translate((String) r);
@@ -110,15 +123,15 @@ public class DebugModeFeature extends Feature {
             });
             Logx.i("调试模式：已 hook getTitle() → 中文标签");
         } catch (Throwable t) {
-            Logx.w("调试模式：hook getTitle 失败", t);
+            FeatureDiagnostics.failure(Config.K_DEBUG, "调试模式：hook getTitle 失败", t);
         }
     }
 
     /** 兜底：若本模块在 {@code <clinit>} 之前装载（未来版本可能的时序），构造器 hook 也能生效。 */
     private void hookAllCtorsAsFallback(final Class<?> dc) {
-        XposedBridge.hookAllConstructors(dc, new XC_MethodHook() {
+        XposedBridge.hookAllConstructors(dc, new DiagnosticHook(Config.K_DEBUG) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 Object[] args = param.args;
                 if (args == null) {
                     return;
@@ -143,9 +156,9 @@ public class DebugModeFeature extends Feature {
     private void installResumeMarker(XC_LoadPackage.LoadPackageParam lpp) {
         try {
             XposedHelpers.findAndHookMethod("android.app.Activity", lpp.classLoader,
-                    "onResume", new XC_MethodHook() {
+                    "onResume", new DiagnosticHook(Config.K_DEBUG) {
                         @Override
-                        public void afterHookedMethod(MethodHookParam param) {
+                        public void after(MethodHookParam param) {
                             if (!(param.thisObject instanceof Activity)) {
                                 return;
                             }
@@ -155,7 +168,7 @@ public class DebugModeFeature extends Feature {
                     });
             Logx.i("调试模式：已挂接 Activity.onResume（界面标记）");
         } catch (Throwable t) {
-            Logx.w("调试模式：挂接 Activity.onResume 失败", t);
+            FeatureDiagnostics.failure(Config.K_DEBUG, "调试模式：挂接 Activity.onResume 失败", t);
         }
     }
 

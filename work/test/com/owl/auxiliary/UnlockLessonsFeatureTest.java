@@ -29,6 +29,7 @@ public final class UnlockLessonsFeatureTest {
         verifyNode(copier);
         verifySession(copier);
         verifyPopup(copier);
+        verifyPopup1045(copier);
         expectRejected(copier, null);
         expectRejected(copier, new Object());
         expectRejected(copier, new Level(null, 0, new Object()));
@@ -62,6 +63,28 @@ public final class UnlockLessonsFeatureTest {
         public final int b;
         public final Vector c;
         public Section(int index, String id, Vector units) { a = id; b = index; c = units; }
+    }
+
+    public static final class Section1045 {
+        public final String a;
+        public final int b;
+        public final Vector c;
+        public Section1045(int index, Vector units, String id) { a = id; b = index; c = units; }
+    }
+
+    private static void verifyPopup1045(UnlockLessonsFeature.SessionCopy copier) throws Exception {
+        UnlockPopupData data = new UnlockPopupData(Section1045.class, Unit.class, Vector.class);
+        Level locked = new Level(State.LOCKED, 0, new Object());
+        Unit unit = new Unit("71", new Vector(locked));
+        Section1045 original = new Section1045(5, new Vector(unit), "section");
+        Section1045 result = (Section1045) data.copySection(original, copier);
+        require(result != original && result.a == original.a && result.b == original.b,
+                "6.104.5 构造参数换序后阶段标识必须保持");
+        require(((Level) ((Unit) result.c.get(0)).b.get(0)).state == State.ACTIVE,
+                "6.104.5 弹层副本应可学习");
+        require(original.c.get(0) == unit && unit.b.get(0) == locked && locked.state == State.LOCKED,
+                "6.104.5 原始路径不得被污染");
+        require(data.copySection(result, copier) == result, "无需更改时复用副本");
     }
 
     private static void verifyPopup(UnlockLessonsFeature.SessionCopy copier) throws Exception {

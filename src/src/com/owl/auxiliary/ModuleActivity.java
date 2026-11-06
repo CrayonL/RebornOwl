@@ -27,6 +27,7 @@ import android.widget.Toast;
 /** 模块自身的桌面页；桌面可见性以系统组件状态为准。 */
 public final class ModuleActivity extends Activity {
     static final String SOURCE_URL = "https://github.com/CrayonL/RebornOwl";
+    static final String ISSUES_URL = SOURCE_URL + "/issues";
     private static final String GITHUB_PACKAGE = "com.github.android";
     private static final String LAUNCHER = Targets.MODULE_PKG + ".Launcher";
     private static final int BLUE = 0xFF1CB0F6;
@@ -53,6 +54,13 @@ public final class ModuleActivity extends Activity {
         addHeading(body);
         body.addView(launcherControl());
         body.addView(sourceButton());
+        TextView feedback = text("功能失效，点击反馈", 16);
+        feedback.setMinHeight(dp(CONTROL_HEIGHT_DP));
+        feedback.setGravity(Gravity.CENTER);
+        feedback.setTextColor(BLUE);
+        feedback.setFocusable(true);
+        feedback.setOnClickListener(view -> openIssues(this));
+        body.addView(feedback);
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
             view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
                     insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
@@ -160,14 +168,22 @@ public final class ModuleActivity extends Activity {
     }
 
     private void openSource() {
-        Intent web = new Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL));
+        openGithub(this, SOURCE_URL);
+    }
+
+    static boolean openIssues(Activity activity) { return openGithub(activity, ISSUES_URL); }
+
+    private static boolean openGithub(Activity activity, String url) {
+        Intent web = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         web.addCategory(Intent.CATEGORY_BROWSABLE);
         Intent app = new Intent(web).setPackage(GITHUB_PACKAGE);
         try {
-            startActivity(app.resolveActivity(getPackageManager()) != null ? app : web);
+            activity.startActivity(app.resolveActivity(activity.getPackageManager()) != null ? app : web);
+            return true;
         } catch (ActivityNotFoundException error) {
-            Log.e("OwlReborn", "无法打开开源地址", error);
-            Toast.makeText(this, "未找到可打开 GitHub 链接的应用", Toast.LENGTH_LONG).show();
+            Log.e("OwlReborn", "无法打开 GitHub 地址", error);
+            Toast.makeText(activity, "未找到可打开 GitHub 链接的应用", Toast.LENGTH_LONG).show();
+            return false;
         }
     }
 

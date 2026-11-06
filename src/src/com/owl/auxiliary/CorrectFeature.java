@@ -38,43 +38,57 @@ public class CorrectFeature extends Feature {
     }
 
     @Override
-    public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
-        rewrite(lpp, Targets.S_SESSION_DEBUG,
-                new ArgumentOverride(SESSION_CORRECT_INDEX, boolean.class, Boolean.TRUE));
-        rewrite(lpp, Targets.S_SPEECH,
-                new ArgumentOverride(SCORE_INDEX, double.class, 1.0d));
-        rewrite(lpp, Targets.S_PASSAGE,
-                new ArgumentOverride(SCORE_INDEX, float.class, 1.0f));
-        rewrite(lpp, Targets.S_GRADED,
-                new ArgumentOverride(GRADED_CORRECT_INDEX, boolean.class, Boolean.TRUE));
-        // MatchChallenge 的首参是序列化位掩码，清零会触发缺字段异常。
-        hookBooleanMethod(lpp, Targets.S_CHAR_MATCH);
-        hookBooleanMethod(lpp, Targets.S_WORD_MATCH);
-        hookBooleanMethod(lpp, Targets.S_LISTEN_MATCH);
+    public void check(XC_LoadPackage.LoadPackageParam lpp) {
+        constructorRules(lpp);
+        booleanTargets(lpp);
     }
 
-    private void rewrite(XC_LoadPackage.LoadPackageParam lpp, String key, ArgumentOverride rule) {
-        final Class<?> c = Locator.byKey(key, lpp.classLoader);
+    private static java.util.Map<Constructor<?>, ArgumentOverride> constructorRules(XC_LoadPackage.LoadPackageParam lpp) {
+        java.util.Map<String, ArgumentOverride> rules = new java.util.LinkedHashMap<>();
+        rules.put(Targets.S_SESSION_DEBUG, new ArgumentOverride(SESSION_CORRECT_INDEX, boolean.class, Boolean.TRUE));
+        rules.put(Targets.S_SPEECH, new ArgumentOverride(SCORE_INDEX, double.class, 1.0d));
+        rules.put(Targets.S_PASSAGE, new ArgumentOverride(SCORE_INDEX, float.class, 1.0f));
+        rules.put(Targets.S_GRADED, new ArgumentOverride(GRADED_CORRECT_INDEX, boolean.class, Boolean.TRUE));
+        java.util.Map<Constructor<?>, ArgumentOverride> result = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, ArgumentOverride> entry : rules.entrySet()) {
+            for (Constructor<?> ctor : constructors(lpp.classLoader, entry.getKey(), entry.getValue())) {
+                result.put(ctor, entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private static java.util.List<Constructor<?>> constructors(ClassLoader loader, String key, ArgumentOverride rule) {
+        Class<?> c = Locator.byKey(key, loader);
         if (c == null) {
             throw new IllegalStateException("强制正确：未定位 " + key);
         }
-        int count = 0;
+        java.util.List<Constructor<?>> result = new java.util.ArrayList<>();
         for (Constructor<?> ctor : c.getDeclaredConstructors()) {
-            if (!rule.supports(ctor.getParameterTypes())) {
-                continue;
-            }
-            XposedBridge.hookMethod(ctor, new XC_MethodHook() {
+            if (rule.supports(ctor.getParameterTypes())) { result.add(ctor); }
+        }
+        if (result.isEmpty()) { throw new IllegalStateException("强制正确：构造参数不匹配 " + c.getName()); }
+        return result;
+    }
+
+    @Override
+    public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
+        for (java.util.Map.Entry<Constructor<?>, ArgumentOverride> entry : constructorRules(lpp).entrySet()) {
+            Constructor<?> ctor = entry.getKey();
+            ArgumentOverride rule = entry.getValue();
+            XposedBridge.hookMethod(ctor, new DiagnosticHook(Config.K_CORRECT) {
                 @Override
-                public void beforeHookedMethod(MethodHookParam param) {
+                public void before(MethodHookParam param) {
                     param.args = rule.rewrite(param.args);
                 }
             });
-            count++;
         }
-        if (count == 0) {
-            throw new IllegalStateException("强制正确：构造参数不匹配 " + c.getName());
+        for (Method method : booleanTargets(lpp)) {
+            XposedBridge.hookMethod(method, new DiagnosticHook(Config.K_CORRECT) {
+                @Override
+                public void before(MethodHookParam param) { param.setResult(Boolean.TRUE); }
+            });
         }
-        Logx.i("强制正确：hook " + c.getName() + " args[" + rule.index + "]，构造器数=" + count);
     }
 
     static final class ArgumentOverride {
@@ -109,13 +123,17 @@ public class CorrectFeature extends Feature {
      * <p>实测这三个题型模型类里有两个布尔方法：{@code F(byte,Object)Z} 与 {@code G(byte)Z}，
      * 均为宿主内的单字母方法名；带参（byte）为内部标记位，不影响语义。
      */
-    private void hookBooleanMethod(XC_LoadPackage.LoadPackageParam lpp, String key) {
-        final Class<?> c = Locator.byKey(key, lpp.classLoader);
-        if (c == null) {
-            Logx.w("强制正确：未定位 " + key, null);
-            return;
+    private static java.util.List<Method> booleanTargets(XC_LoadPackage.LoadPackageParam lpp) {
+        java.util.List<Method> result = new java.util.ArrayList<>();
+        for (String key : new String[]{Targets.S_CHAR_MATCH, Targets.S_WORD_MATCH, Targets.S_LISTEN_MATCH}) {
+            result.addAll(booleanMethods(Locator.byKey(key, lpp.classLoader)));
         }
-        int n = 0;
+        return result;
+    }
+
+    private static java.util.List<Method> booleanMethods(Class<?> c) {
+        if (c == null) { throw new IllegalStateException("强制正确：判题模型缺失"); }
+        java.util.List<Method> result = new java.util.ArrayList<>();
         for (Method m : c.getDeclaredMethods()) {
             if (Modifier.isStatic(m.getModifiers())) {
                 continue;
@@ -128,15 +146,9 @@ public class CorrectFeature extends Feature {
             if ("equals".equals(name) || "hashCode".equals(name) || "toString".equals(name)) {
                 continue;
             }
-            XposedBridge.hookMethod(m, new XC_MethodHook() {
-                @Override
-                public void beforeHookedMethod(MethodHookParam param) {
-                    param.setResult(Boolean.TRUE);
-                }
-            });
-            n++;
-            Logx.i("强制正确：" + c.getName() + "." + name + " -> true");
+            result.add(m);
         }
-        Logx.i("强制正确：" + c.getName() + " 共 hook " + n + " 个布尔方法");
+        if (result.isEmpty()) { throw new IllegalStateException("强制正确：判题方法缺失 " + c.getName()); }
+        return result;
     }
 }

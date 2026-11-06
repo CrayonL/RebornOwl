@@ -55,6 +55,12 @@ public class SourceLinkProbe {
                     || !Intent.CATEGORY_BROWSABLE.equals(result.category)) {
                 throw new AssertionError("GitHub 优先或网页回退错误");
             }
+            ModuleActivity.openIssues(activity);
+            result = Activity.opened;
+            if (!java.util.Objects.equals(expected, result.target)
+                    || !"https://github.com/CrayonL/RebornOwl/issues".equals(result.data.toString())) {
+                throw new AssertionError("反馈必须进入项目 Issues，保留 App/网页打开行为");
+            }
         }
         System.out.println("PASS: GitHub 可用时定向 App，不可用时浏览器处理同一 HTTPS 地址");
     }

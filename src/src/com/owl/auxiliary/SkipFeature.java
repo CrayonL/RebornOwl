@@ -23,7 +23,9 @@ public class SkipFeature extends Feature {
     }
 
     @Override
-    public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
+    public void check(XC_LoadPackage.LoadPackageParam lpp) { target(lpp); }
+
+    static Constructor<?> target(XC_LoadPackage.LoadPackageParam lpp) {
         Class<?> settings = Locator.byKey(Targets.S_SESSION_DEBUG, lpp.classLoader);
         if (settings == null) { throw new IllegalStateException("直接通关：未定位课程调试设置"); }
         Constructor<?> target = null;
@@ -36,9 +38,15 @@ public class SkipFeature extends Feature {
             target = constructor;
         }
         if (target == null) { throw new IllegalStateException("直接通关：课程设置构造器不匹配"); }
-        XposedBridge.hookMethod(target, new XC_MethodHook() {
+        return target;
+    }
+
+    @Override
+    public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
+        Constructor<?> target = target(lpp);
+        XposedBridge.hookMethod(target, new DiagnosticHook(Config.K_SKIP) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 param.args = rewriteSession(param.args);
             }
         });

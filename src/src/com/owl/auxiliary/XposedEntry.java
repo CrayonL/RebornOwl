@@ -49,6 +49,7 @@ public class XposedEntry extends XposedModule {
                 + " ver=" + Targets.hostVersion(lpp.appInfo)
                 + " process=" + lpp.processName);
         try {
+            CompatibilityNotice.modulePath = getModuleApplicationInfo().sourceDir;
             String dataDir = lpp.appInfo == null ? null : lpp.appInfo.dataDir;
             Config.init(dataDir);
             Config.load();

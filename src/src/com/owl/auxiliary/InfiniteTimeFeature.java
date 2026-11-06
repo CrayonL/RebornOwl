@@ -26,6 +26,8 @@ public class InfiniteTimeFeature extends Feature {
      * 原先的 999999999 秒≈31 年（显示畸长）；99 分钟 = 5940 秒，足够覆盖单次限时练习。
      */
     private static final int GAME_TIME_SEC = 99 * 60;
+    private static final int MULTI_TIME_INDEX = 1;
+    private static final int MATCH_TIME_INDEX = 0;
 
     @Override
     public String key() {
@@ -38,21 +40,38 @@ public class InfiniteTimeFeature extends Feature {
     }
 
     @Override
+    public void check(XC_LoadPackage.LoadPackageParam lpp) {
+        timedConstructors(lpp.classLoader, Targets.S_TIMED_MULTI, MULTI_TIME_INDEX);
+        timedConstructors(lpp.classLoader, Targets.S_TIMED_MATCH, MATCH_TIME_INDEX);
+        SkipFeature.target(lpp);
+    }
+
+    private static java.util.List<java.lang.reflect.Constructor<?>> timedConstructors(ClassLoader loader,
+            String marker, int index) {
+        Class<?> type = Locator.byKey(marker, loader);
+        if (type == null) { throw new IllegalStateException("无限时间：未定位 " + marker); }
+        java.util.List<java.lang.reflect.Constructor<?>> result = new java.util.ArrayList<>();
+        for (java.lang.reflect.Constructor<?> ctor : type.getDeclaredConstructors()) {
+            Class<?>[] types = ctor.getParameterTypes();
+            if (types.length > index && (types[index] == int.class || types[index] == Integer.class)) {
+                result.add(ctor);
+            }
+        }
+        if (result.isEmpty()) { throw new IllegalStateException("无限时间：时长参数不匹配 " + type.getName()); }
+        return result;
+    }
+
+    @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
-        hookIndex(lpp, Targets.S_TIMED_MULTI, 1);
-        hookIndex(lpp, Targets.S_TIMED_MATCH, 0);
+        hookIndex(lpp, Targets.S_TIMED_MULTI, MULTI_TIME_INDEX);
+        hookIndex(lpp, Targets.S_TIMED_MATCH, MATCH_TIME_INDEX);
         hookSessionDebug(lpp);
     }
 
     private void hookIndex(XC_LoadPackage.LoadPackageParam lpp, String key, final int idx) {
-        Class<?> c = Locator.byKey(key, lpp.classLoader);
-        if (c == null) {
-            Logx.w("无限时间：未定位 " + key, null);
-            return;
-        }
-        XposedBridge.hookAllConstructors(c, new XC_MethodHook() {
+        XC_MethodHook callback = new DiagnosticHook(Config.K_GAMETIME) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 Object[] args = param.args;
                 if (args == null || idx >= args.length) {
                     return;
@@ -63,19 +82,17 @@ public class InfiniteTimeFeature extends Feature {
                     args[idx] = GAME_TIME_SEC;
                 }
             }
-        });
-        Logx.i("无限时间：已 hook " + c.getName() + " args[" + idx + "]");
+        };
+        for (java.lang.reflect.Constructor<?> ctor : timedConstructors(lpp.classLoader, key, idx)) {
+            XposedBridge.hookMethod(ctor, callback);
+        }
     }
 
     private void hookSessionDebug(XC_LoadPackage.LoadPackageParam lpp) {
-        Class<?> c = Locator.byKey(Targets.S_SESSION_DEBUG, lpp.classLoader);
-        if (c == null) {
-            Logx.w("无限时间：未定位 " + Targets.S_SESSION_DEBUG, null);
-            return;
-        }
-        XposedBridge.hookAllConstructors(c, new XC_MethodHook() {
+        java.lang.reflect.Constructor<?> target = SkipFeature.target(lpp);
+        XposedBridge.hookMethod(target, new DiagnosticHook(Config.K_GAMETIME) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 Object[] args = param.args;
                 if (args == null) {
                     return;
@@ -87,6 +104,6 @@ public class InfiniteTimeFeature extends Feature {
                 }
             }
         });
-        Logx.i("无限时间：已 hook 会话调试设置 " + c.getName());
+        Logx.i("无限时间：已 hook 会话调试设置 " + target.getDeclaringClass().getName());
     }
 }

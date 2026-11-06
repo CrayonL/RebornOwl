@@ -11,6 +11,28 @@ public final class Locator {
 
     private Locator() {}
 
+    interface Contract { void verify(Class<?> type) throws ReflectiveOperationException; }
+
+    /** 候选必须唯一满足完整契约，避免把新版同名的无关类当作兼容目标。 */
+    static Class<?> byContract(ClassLoader loader, String[] names, Contract contract) {
+        Class<?> resolved = null;
+        IllegalStateException failure = new IllegalStateException("目标结构不匹配：" + java.util.Arrays.toString(names));
+        for (String name : names) {
+            Class<?> candidate;
+            try {
+                candidate = Class.forName(name, false, loader);
+                contract.verify(candidate);
+            } catch (ReflectiveOperationException | IllegalStateException error) {
+                failure.addSuppressed(error);
+                continue;
+            }
+            if (resolved != null) { throw new IllegalStateException("目标结构匹配不唯一：" + name); }
+            resolved = candidate;
+        }
+        if (resolved == null) { throw failure; }
+        return resolved;
+    }
+
     /** 内部描述符 Lx/y; → Java 类名 x.y */
     public static String descToName(String desc) {
         if (desc == null) {

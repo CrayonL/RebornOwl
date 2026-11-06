@@ -36,6 +36,13 @@ public class TimezoneFeature extends Feature {
     public boolean defaultOn() { return true; }
 
     @Override
+    public void check(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
+        Class<?> zone = Class.forName(Targets.C_TIME_ZONE, false, lpp.classLoader);
+        zone.getConstructor(ZoneId.class);
+        resolveClock(lpp.classLoader, zone);
+    }
+
+    @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
         // 两项均开启时由日期项安装一次，避免重复 Hook 同一组方法。
         if (!date && Config.getOr(Config.K_DATE, true)) { return; }
@@ -103,20 +110,21 @@ public class TimezoneFeature extends Feature {
         return methods;
     }
 
-    private static final class HostClockHook extends XC_MethodHook {
+    private static final class HostClockHook extends DiagnosticHook {
         private final Clock clock;
         private final Constructor<?> instantConstructor;
         private final Object kotlinZone;
         private String reportedDate;
 
         HostClockHook(Clock clock, Constructor<?> instantConstructor, Object kotlinZone) {
+            super(Config.K_DATE);
             this.clock = clock;
             this.instantConstructor = instantConstructor;
             this.kotlinZone = kotlinZone;
         }
 
         @Override
-        public void beforeHookedMethod(MethodHookParam param) {
+        public void before(MethodHookParam param) {
             String method = param.method.getName();
             final Object result;
             try {

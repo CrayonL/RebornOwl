@@ -173,6 +173,9 @@ def cases():
     return [
         ('6.103.6', {}, ['bb7', 'nqk']),
         ('6.104.4', new, ['cf7', 'hzk']),
+        ('6.104.5-china', {'bb7.java': collision, 'nqk.java': 'public class nqk {}',
+                         'a07.java': old_clock.replace('bb7', 'a07').replace('nqk', 'j0k'),
+                         'j0k.java': FIXTURES['nqk.java'].replace('nqk', 'j0k')}, ['a07', 'j0k']),
         ('missing', {'bb7.java': None, 'nqk.java': None}, ['failure']),
         ('wrong-return', dict(new, **{'cf7.java': new_clock.replace('Instant g()', 'String g()')}), ['failure']),
         ('wrong-instant', dict(new, **{'hzk.java': 'public class hzk {}'}), ['failure']),

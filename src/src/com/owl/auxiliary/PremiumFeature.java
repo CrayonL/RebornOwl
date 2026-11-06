@@ -46,6 +46,61 @@ public class PremiumFeature extends Feature {
     }
 
     @Override
+    public void check(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
+        Class<?> model = Class.forName(Targets.C_PLUS_VIEW_MODEL, false, lpp.classLoader);
+        Class<?> status = Class.forName(Targets.C_DASH_STATUS, false, lpp.classLoader);
+        if (status.getField(Targets.F_DASH_SUPPORTED).getType() != status
+                || java.util.Arrays.stream(model.getDeclaredMethods())
+                .noneMatch(method -> status.isAssignableFrom(method.getReturnType()))) {
+            throw new IllegalStateException("会员入口：显示状态方法或 SUPPORTED 常量缺失");
+        }
+        checkUser(lpp);
+        Class<?> features = subscriptionFeatures(lpp.classLoader);
+        for (String name : Targets.F_VIDEO_CALL_FEATURES) { features.getField(name); }
+        Class<?> set = Class.forName(Targets.C_PSET, false, lpp.classLoader);
+        set.getMethod("plus", Object.class);
+        Class<?> group = Class.forName(Targets.C_SUB_FEATURE_GROUP, false, lpp.classLoader);
+        if (java.util.Arrays.stream(group.getDeclaredConstructors()).noneMatch(ctor ->
+                java.util.Arrays.asList(ctor.getParameterTypes()).contains(set))) {
+            throw new IllegalStateException("会员入口：功能组构造签名不匹配");
+        }
+        dashboardFactory(lpp.classLoader);
+        Class.forName(Targets.C_VC_ORIGIN_PRACTICE_HUB, false, lpp.classLoader).getDeclaredConstructor();
+        Class.forName(Targets.C_VIDEO_CALL_ACTIVITY, false, lpp.classLoader);
+    }
+
+    private static void checkUser(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
+        Class<?> user = Locator.byKeyOrName(Targets.S_USER, null, lpp.classLoader);
+        if (user == null) { throw new IllegalStateException("会员数据：User 类缺失"); }
+        Class<?> tier = Class.forName("com.duolingo.data.user.SubscriberLevel", false, lpp.classLoader);
+        tier.getField(Targets.F_TIER_GOLD);
+        tier.getField(Targets.F_TIER_PREMIUM);
+        for (Constructor<?> ctor : user.getDeclaredConstructors()) {
+            Class<?>[] types = ctor.getParameterTypes();
+            int index = java.util.Arrays.asList(types).indexOf(tier);
+            int max = index + Targets.USER_ARG_HAS_MAX_OFFSET;
+            if (index >= 0 && max < types.length && types[max] == boolean.class) { return; }
+        }
+        throw new IllegalStateException("会员数据：等级或 hasMax 参数不匹配");
+    }
+
+    private static Class<?> dashboardFactory(ClassLoader loader) {
+        return Locator.byContract(loader, Targets.C_DASHBOARD_CLICK_FACTORIES, type -> {
+            type.getDeclaredConstructor(Class.forName(Targets.C_PLUS_VIEW_MODEL, false, loader), int.class);
+            dashboardInvoke(type);
+        });
+    }
+
+    private static Class<?> subscriptionFeatures(ClassLoader loader) {
+        return Locator.byContract(loader, Targets.C_SUB_FEATURE_TYPES, type -> {
+            if (!type.isEnum()) { throw new IllegalStateException("会员功能类型不是枚举"); }
+            for (String name : Targets.F_VIDEO_CALL_FEATURES) {
+                if (type.getField(name).getType() != type) { throw new IllegalStateException("会员功能枚举类型不匹配"); }
+            }
+        });
+    }
+
+    @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
         applyDashboard(lpp);
         applyUser(lpp);
@@ -80,12 +135,12 @@ public class PremiumFeature extends Feature {
         Class<?> pvm = Locator.byName(Targets.C_PLUS_VIEW_MODEL, lpp.classLoader);
         Class<?> status = Locator.byName(Targets.C_DASH_STATUS, lpp.classLoader);
         if (pvm == null || status == null) {
-            Logx.w("会员解锁(视图)：PlusViewModel/DashboardFeatureDisplayStatus 缺失", null);
+            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视图)：PlusViewModel/DashboardFeatureDisplayStatus 缺失", null);
             return;
         }
         final Object supported = supportedConstant(status);
         if (supported == null) {
-            Logx.w("会员解锁(视图)：找不到 SUPPORTED 常量", null);
+            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视图)：找不到 SUPPORTED 常量", null);
             return;
         }
         int n = 0;
@@ -93,9 +148,9 @@ public class PremiumFeature extends Feature {
             if (!status.isAssignableFrom(m.getReturnType())) {
                 continue;
             }
-            XposedBridge.hookMethod(m, new XC_MethodHook() {
+            XposedBridge.hookMethod(m, new DiagnosticHook(Config.K_PREMIUM) {
                 @Override
-                public void beforeHookedMethod(MethodHookParam param) {
+                public void before(MethodHookParam param) {
                     param.setResult(supported);
                 }
             });
@@ -146,14 +201,14 @@ public class PremiumFeature extends Feature {
     private void applyUser(XC_LoadPackage.LoadPackageParam lpp) {
         Class<?> user = Locator.byKeyOrName(Targets.S_USER, null, lpp.classLoader);
         if (user == null) {
-            Logx.w("会员解锁(数据)：未定位 User 类", null);
+            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(数据)：未定位 User 类", null);
             return;
         }
         final String tierName = targetTierName();
         final boolean max = isMaxLevel();
-        XposedBridge.hookAllConstructors(user, new XC_MethodHook() {
+        XposedBridge.hookAllConstructors(user, new DiagnosticHook(Config.K_PREMIUM) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 Object[] args = param.args;
                 if (args == null) {
                     return;
@@ -212,7 +267,7 @@ public class PremiumFeature extends Feature {
         for (String name : names) {
             Object c = enumConstant(enumCls, name);
             if (c == null) {
-                Logx.w("会员解锁(视频通话)：枚举常量缺失 " + enumCls.getSimpleName() + "." + name, null);
+                FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视频通话)：枚举常量缺失 " + enumCls.getSimpleName() + "." + name, null);
             } else {
                 out.add(c);
             }
@@ -267,17 +322,17 @@ public class PremiumFeature extends Feature {
 
     /** ① 给每个 {@code SubscriptionFeatureGroup} 的功能集加上视频通话两项（并集，不删原值）。 */
     private void applyVideoCallFeatures(XC_LoadPackage.LoadPackageParam lpp) {
-        final Class<?> featuresCls = Locator.byName(Targets.C_SUB_FEATURES, lpp.classLoader);
+        final Class<?> featuresCls = subscriptionFeatures(lpp.classLoader);
         final Class<?> groupCls = Locator.byName(Targets.C_SUB_FEATURE_GROUP, lpp.classLoader);
         final Class<?> psetCls = Locator.byName(Targets.C_PSET, lpp.classLoader);
         if (featuresCls == null || groupCls == null || psetCls == null) {
-            Logx.w("会员解锁(视频通话)：SubscriptionFeatures / FeatureGroup / PSet 定位失败"
+            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视频通话)：SubscriptionFeatures / FeatureGroup / PSet 定位失败"
                     + "（features=" + featuresCls + " group=" + groupCls + " pset=" + psetCls + "）", null);
             return;
         }
         final Object[] wants = enumConstants(featuresCls, Targets.F_VIDEO_CALL_FEATURES);
         if (wants.length == 0) {
-            Logx.w("会员解锁(视频通话)：目标功能枚举一个都没解析到，放弃功能组注入", null);
+            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视频通话)：目标功能枚举一个都没解析到，放弃功能组注入", null);
             return;
         }
         Logx.i("会员解锁(视频通话)：目标功能 = " + java.util.Arrays.toString(wants));
@@ -287,12 +342,12 @@ public class PremiumFeature extends Feature {
             plus = psetCls.getMethod("plus", Object.class);
             plus.setAccessible(true);
         } catch (Throwable t) {
-            Logx.w("会员解锁(视频通话)：PSet.plus 不存在，放弃功能组注入", t);
+            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视频通话)：PSet.plus 不存在，放弃功能组注入", t);
             return;
         }
-        XposedBridge.hookAllConstructors(groupCls, new XC_MethodHook() {
+        XposedBridge.hookAllConstructors(groupCls, new DiagnosticHook(Config.K_PREMIUM) {
             @Override
-            public void beforeHookedMethod(MethodHookParam param) {
+            public void before(MethodHookParam param) {
                 appendVideoCallFeatures(param.args, plus, wants);
             }
         });
@@ -318,7 +373,7 @@ public class PremiumFeature extends Feature {
                     merged = plus.invoke(merged, wanted);
                 }
             } catch (Throwable t) {
-                Logx.w("会员解锁(视频通话)：PSet.plus 失败（保持原集合）", t);
+                FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视频通话)：PSet.plus 失败（保持原集合）", t);
                 return;
             }
             if (merged != original) {
@@ -333,15 +388,15 @@ public class PremiumFeature extends Feature {
 
     /** ② 控制板「开始视频通话」点击 → 直接启动 {@code VideoCallActivity}（再执行原行为）。 */
     private void applyVideoCallLauncher(XC_LoadPackage.LoadPackageParam lpp) {
-        final Class<?> factory = Locator.byName(Targets.C_DASHBOARD_CLICK_FACTORY, lpp.classLoader);
+        final Class<?> factory = dashboardFactory(lpp.classLoader);
         final Class<?> originCls = Locator.byName(Targets.C_VC_ORIGIN_PRACTICE_HUB, lpp.classLoader);
         if (factory == null || originCls == null) {
             throw new IllegalStateException("会员解锁(视频通话)：点击工厂或通话来源类缺失");
         }
         Method invoke = dashboardInvoke(factory);
-        XposedBridge.hookMethod(invoke, new XC_MethodHook() {
+        XposedBridge.hookMethod(invoke, new DiagnosticHook(Config.K_PREMIUM) {
             @Override
-            public void afterHookedMethod(MethodHookParam param) {
+            public void after(MethodHookParam param) {
                 wrapVideoCallResult(param, originCls);
             }
         });
@@ -380,7 +435,7 @@ public class PremiumFeature extends Feature {
             });
             Logx.i("会员解锁(视频通话)：已包装控制板视频通话点击");
         } catch (Throwable t) {
-            Logx.w("会员解锁(视频通话)：包装点击失败（保持原行为）", t);
+            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视频通话)：包装点击失败（保持原行为）", t);
         }
     }
 
@@ -406,7 +461,7 @@ public class PremiumFeature extends Feature {
         } catch (Throwable t) {
             if (!sVcLaunchWarned) {
                 sVcLaunchWarned = true;
-                Logx.w("会员解锁(视频通话)：启动通话界面失败（本次点击退化为原行为）", t);
+                FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视频通话)：启动通话界面失败（本次点击退化为原行为）", t);
             }
         }
     }
@@ -436,9 +491,9 @@ public class PremiumFeature extends Feature {
                 continue;
             }
             try {
-                XposedBridge.hookAllConstructors(c, new XC_MethodHook() {
+                XposedBridge.hookAllConstructors(c, new DiagnosticHook(Config.K_PREMIUM) {
                     @Override
-                    public void afterHookedMethod(MethodHookParam param) {
+                    public void after(MethodHookParam param) {
                         if (!logged[0]) {
                             logged[0] = true;
                             Logx.i("[billing] " + n + " ctor 首次命中");

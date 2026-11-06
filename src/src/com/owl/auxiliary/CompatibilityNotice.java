@@ -1,37 +1,47 @@
 package com.owl.auxiliary;
 
 import android.app.Activity;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HashSet;
+import java.util.Set;
 
-/** 每个宿主进程检查一次；只提醒未适配版本，不改变功能开关。 */
+/** 只提醒实际异常；版本和模块安装身份仅用于让旧的忽略选择失效。 */
 public final class CompatibilityNotice {
-    private static boolean checked;
+    private static final Set<String> SHOWN = new HashSet<>();
+    static String modulePath;
 
     private CompatibilityNotice() {}
 
     static void onResume(Activity activity) {
-        if (checked || activity.isFinishing() || activity.isDestroyed()) { return; }
+        if (activity.isFinishing() || activity.isDestroyed()) { return; }
+        String problems = FeatureDiagnostics.problems();
+        if (problems.isEmpty()) { return; }
         try {
-            String version = activity.getPackageManager().getPackageInfo(Targets.HOST_PKG, 0).versionName;
-            if (!isSupported(version)) {
-                SettingsInjector.showCompatibilityNotice(activity, message(version));
-                Logx.i("版本检测：已提示未适配版本 " + version);
-            } else {
-                Logx.i("版本检测：已支持 " + version);
-            }
-            checked = true;
+            PackageInfo host = activity.getPackageManager().getPackageInfo(Targets.HOST_PKG, 0);
+            String identity = host.versionName + ":" + host.versionCode + ":" + modulePath;
+            String fingerprint = fingerprint(identity, problems);
+            if (SHOWN.contains(fingerprint)
+                    || fingerprint.equals(Config.getStr(Config.P_IGNORED_PROBLEM, ""))) { return; }
+            SettingsInjector.showCompatibilityNotice(activity, problems, fingerprint);
+            SHOWN.add(fingerprint);
         } catch (PackageManager.NameNotFoundException | RuntimeException error) {
-            Logx.w("版本检测：无法读取版本或显示提示", error);
+            Logx.w("功能检测：无法读取应用信息或显示提示", error);
         }
     }
 
-    static boolean isSupported(String version) {
-        return Targets.HOST_CLOCKS.containsKey(version);
-    }
-
-    static String message(String version) {
-        String display = version == null || version.isEmpty() ? "未知版本" : version;
-        return "你正在使用多邻国 " + display
-                + "，重生猫头鹰尚未适配此版本，部分功能可能无法正常使用。请等待后续适配更新。";
+    static String fingerprint(String identity, String problems) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest((identity + "\n" + problems).getBytes(StandardCharsets.UTF_8));
+            StringBuilder value = new StringBuilder();
+            for (byte part : digest) { value.append(String.format(java.util.Locale.ROOT, "%02x", part & 0xff)); }
+            return value.toString();
+        } catch (NoSuchAlgorithmException error) {
+            throw new IllegalStateException("无法计算异常标识", error);
+        }
     }
 }

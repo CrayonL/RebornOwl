@@ -72,19 +72,76 @@ public final class SettingsInjector {
         for (Feature feature : FeatureManager.all()) {
             body.addView(featureRow(act, feature));
         }
+        TextView diagnostics = action(act, "兼容检测");
+        diagnostics.setOnClickListener(view -> showDiagnostics(act));
+        body.addView(diagnostics);
+        TextView feedback = action(act, "功能失效，点击反馈");
+        feedback.setOnClickListener(view -> ModuleActivity.openIssues(act));
+        body.addView(feedback);
         Dialog dialog = showPanel(act, Brand.NAME, body);
         Logx.i("插件设置：已从悬浮球打开 @" + act.getClass().getSimpleName());
         return dialog;
     }
 
-    static Dialog showCompatibilityNotice(Activity act, String message) {
+    static Dialog showCompatibilityNotice(Activity act, String message, String fingerprint) {
+        LinearLayout panel = noticeContent(act, "部分功能运行异常",
+                "检测到以下功能异常（包含未开启功能）：\n\n" + message
+                        + "\n\n其他功能可继续使用。详细状态可在设置的“兼容检测”中查看。");
         Dialog dialog = new Dialog(act);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        LinearLayout buttons = noticeButtons(act);
+        TextView feedback = footerButton(act, "功能失效，点击反馈", "OutlineButton");
+        feedback.setOnClickListener(view -> {
+            if (ModuleActivity.openIssues(act)) { dialog.dismiss(); }
+        });
+        TextView dismiss = footerButton(act, "知道了", "SolidBlueButton");
+        dismiss.setOnClickListener(view -> {
+            dialog.dismiss();
+            if (!act.isFinishing() && !act.isDestroyed()) { showNoticePreference(act, fingerprint); }
+        });
+        addNoticeButton(buttons, feedback, 2f);
+        addNoticeButton(buttons, dismiss, 1f);
+        panel.addView(buttons);
+        return showNotice(act, dialog, panel);
+    }
+
+    private static void showNoticePreference(Activity act, String fingerprint) {
+        LinearLayout panel = noticeContent(act, "是否不再提示此问题？",
+                "仅关闭当前这组异常的提醒，不影响功能开关。更新多邻国、更新模块或出现新异常时会再次提醒。可随时在设置中查看异常并反馈。");
+        Dialog dialog = new Dialog(act);
+        LinearLayout buttons = noticeButtons(act);
+        TextView remind = footerButton(act, "下次仍提示", "OutlineButton");
+        remind.setOnClickListener(view -> dialog.dismiss());
+        TextView ignore = footerButton(act, "不再提示", "SolidBlueButton");
+        ignore.setOnClickListener(view -> {
+            if (Config.suppressProblem(fingerprint)) { dialog.dismiss(); }
+            else { Toast.makeText(act, "提醒设置保存失败，请重试", Toast.LENGTH_LONG).show(); }
+        });
+        addNoticeButton(buttons, remind, 1f);
+        addNoticeButton(buttons, ignore, 1f);
+        panel.addView(buttons);
+        showNotice(act, dialog, panel);
+    }
+
+    private static void showDiagnostics(Activity act) {
+        LinearLayout panel = noticeContent(act, "功能兼容检测", FeatureDiagnostics.summary());
+        Dialog dialog = new Dialog(act);
+        LinearLayout buttons = noticeButtons(act);
+        TextView feedback = footerButton(act, "功能失效，点击反馈", "OutlineButton");
+        feedback.setOnClickListener(view -> ModuleActivity.openIssues(act));
+        TextView close = footerButton(act, "关闭", "SolidBlueButton");
+        close.setOnClickListener(view -> dialog.dismiss());
+        addNoticeButton(buttons, feedback, 2f);
+        addNoticeButton(buttons, close, 1f);
+        panel.addView(buttons);
+        showNotice(act, dialog, panel);
+    }
+
+    private static LinearLayout noticeContent(Activity act, String title, String message) {
         LinearLayout panel = column(act);
         int padding = dp(act, PADDING_DP);
         panel.setPadding(padding, padding, padding, padding);
         panel.setBackground(shape(act, night(act) ? DARK_BG : Color.WHITE, RADIUS_DP));
-        panel.addView(panelHeading(act, "当前版本尚未适配"));
+        panel.addView(panelHeading(act, title));
         TextView body = action(act, message);
         body.setTextSize(NOTICE_TEXT_SP);
         body.setBackground(null);
@@ -94,10 +151,25 @@ public final class SettingsInjector {
         scroll.addView(body);
         panel.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView dismiss = footerButton(act, "知道了", "SolidBlueButton");
-        dismiss.setOnClickListener(view -> dialog.dismiss());
-        panel.addView(dismiss, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(act, FOOTER_BUTTON_DP)));
+        return panel;
+    }
+
+    private static LinearLayout noticeButtons(Activity act) {
+        LinearLayout row = new LinearLayout(act);
+        row.setBaselineAligned(false);
+        return row;
+    }
+
+    private static void addNoticeButton(LinearLayout row, TextView button, float weight) {
+        button.setSingleLine(false);
+        button.setMinHeight(dp(row.getContext(), FOOTER_BUTTON_DP));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, weight);
+        if (row.getChildCount() > 0) { params.leftMargin = dp(row.getContext(), FOOTER_GAP_DP); }
+        row.addView(button, params);
+    }
+
+    private static Dialog showNotice(Activity act, Dialog dialog, LinearLayout panel) {
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(panel);
         dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         dialog.setCanceledOnTouchOutside(true);

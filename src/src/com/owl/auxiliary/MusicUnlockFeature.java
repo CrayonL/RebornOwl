@@ -23,19 +23,38 @@ public class MusicUnlockFeature extends Feature {
     }
 
     @Override
+    public void check(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
+        Class<?> access = Class.forName(Targets.C_MUSIC_ACCESS, false, lpp.classLoader);
+        if (!access.isEnum() || access.getField(Targets.F_MUSIC_FULL).getType() != access) {
+            throw new IllegalStateException("LicensedMusicAccess.FULL 类型不匹配");
+        }
+        targets(lpp, access);
+    }
+
+    private static List<Constructor<?>> targets(XC_LoadPackage.LoadPackageParam lpp, Class<?> access) {
+        Class<?> music = Locator.byKeyOrName(Targets.S_MUSIC, null, lpp.classLoader);
+        if (music == null) { throw new IllegalStateException("未定位 Music 模型"); }
+        List<Constructor<?>> result = constructors(music, access);
+        String[] renamed = Targets.C_MUSIC_RENAMED_1045;
+        int renamedStart = Targets.C_MUSIC_ACCESS_MODELS.length - renamed.length;
+        for (int index = 0; index < Targets.C_MUSIC_ACCESS_MODELS.length; index++) {
+            String original = Targets.C_MUSIC_ACCESS_MODELS[index];
+            String[] names = index < renamedStart ? new String[]{original}
+                    : new String[]{original, renamed[index - renamedStart]};
+            Class<?> model = Locator.byContract(lpp.classLoader, names, type -> constructors(type, access));
+            result.addAll(constructors(model, access));
+        }
+        return result;
+    }
+
+    @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
         Class<?> access = XposedHelpers.findClass(Targets.C_MUSIC_ACCESS, lpp.classLoader);
         Object full = access.getField(Targets.F_MUSIC_FULL).get(null);
         if (!access.isEnum() || !access.isInstance(full)) {
             throw new IllegalStateException("LicensedMusicAccess.FULL 类型不匹配");
         }
-        Class<?> music = Locator.byKeyOrName(Targets.S_MUSIC, null, lpp.classLoader);
-        if (music == null) { throw new IllegalStateException("未定位 Music 模型"); }
-        List<Constructor<?>> constructors = constructors(music, access);
-        // 先核对全部目标，签名失配时不留下只覆盖部分入口的 Hook。
-        for (String name : Targets.C_MUSIC_ACCESS_MODELS) {
-            constructors.addAll(constructors(XposedHelpers.findClass(name, lpp.classLoader), access));
-        }
+        List<Constructor<?>> constructors = targets(lpp, access);
         for (Constructor<?> constructor : constructors) {
             XposedBridge.hookMethod(constructor,
                     new AccessHook(accessIndex(constructor, access), (Enum<?>) full));
@@ -79,18 +98,19 @@ public class MusicUnlockFeature extends Feature {
         return rewritten;
     }
 
-    private static final class AccessHook extends XC_MethodHook {
+    private static final class AccessHook extends DiagnosticHook {
         private final int index;
         private final Enum<?> full;
         private boolean reported;
 
         AccessHook(int index, Enum<?> full) {
+            super(Config.K_MUSIC);
             this.index = index;
             this.full = full;
         }
 
         @Override
-        public void beforeHookedMethod(MethodHookParam param) {
+        public void before(MethodHookParam param) {
             Object[] rewritten = rewrite(param.args, index, full);
             if (rewritten == param.args) { return; }
             param.args = rewritten;

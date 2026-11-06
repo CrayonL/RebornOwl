@@ -5,6 +5,10 @@
 /work/test-*/
 /work/feedback-*/
 /work/source-link-*/
+/work/device/
+/work/signing/
+/work/build-validation.txt
+/work/validation-*.txt
 __pycache__/
 *.pyc
 *.jks

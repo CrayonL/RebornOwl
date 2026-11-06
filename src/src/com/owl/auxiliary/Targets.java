@@ -37,6 +37,7 @@ public final class Targets {
             "com.duolingo.data.home.music.LicensedSessionData",
             "fk4", "ok4", "pk4", "zmq",
     };
+    public static final String[] C_MUSIC_RENAMED_1045 = {"s34", "b44", "c44", "pop"};
     public static final String C_DEBUG_CATEGORY = "com.duolingo.data.debug.settings.DebugCategory";
     public static final String C_DEBUG_CATEGORY_OLD = "com.duolingo.debug.DebugCategory";
     public static final String C_SETTINGS_ACTIVITY = "com.duolingo.settings.SettingsActivity";
@@ -48,6 +49,7 @@ public final class Targets {
         Map<String, String> clocks = new LinkedHashMap<>();
         clocks.put("6.103.6", "bb7");
         clocks.put("6.104.4", "cf7");
+        clocks.put("6.104.5-china", "a07");
         HOST_CLOCKS = Collections.unmodifiableMap(clocks);
     }
     public static final String C_SUBSCRIPTION_PREFIX = "com.duolingo.data.user.Subscrib";
@@ -56,6 +58,8 @@ public final class Targets {
     /** Max 功能枚举：{@code SubscriptionFeatures}（含 VIDEO_CALL_IN_PATH 等 19 项）。 */
     public static final String C_SUB_FEATURES =
             "com.duolingo.core.subscription.models.SubscriptionFeatures";
+    public static final String[] C_SUB_FEATURE_TYPES = {C_SUB_FEATURES,
+            "com.duolingo.data.subscription.models.SubscriptionFeatures"};
     /**
      * 功能组数据类：字段 {@code a} 为 {@code PSet<SubscriptionFeatures>}，
      * 由服务端 JSON（{@code deserialize}）构造；宿主各处用
@@ -84,6 +88,7 @@ public final class Targets {
      * {@code dashboard.b.e} 与 {@code PlusActivity.onCreate} 两处构造点），无其它调用点。
      */
     public static final String C_DASHBOARD_CLICK_FACTORY = "tuu";
+    public static final String[] C_DASHBOARD_CLICK_FACTORIES = {C_DASHBOARD_CLICK_FACTORY, "eot"};
     /** 视频通话 intent 的附加项名（VideoCallActivity 视图模型强制要求）。 */
     public static final String E_VIDEO_CALL_CALL_ORIGIN = "call_origin";
     /** 控制板功能枚举中「视频通话」行的常量名（DashboardFeature.VIDEO_CALL）。 */
@@ -131,10 +136,14 @@ public final class Targets {
     public static final String S_PATH_LEVEL = "GenericPathLevel(id=";
     public static final String S_PATH_SESSION_STATE = "PathLevelSessionState(level=";
     public static final String C_NEW_PATH_CONVERTER = "cur";
+    public static final String[] C_NEW_PATH_CONVERTERS = {C_NEW_PATH_CONVERTER, "ytq"};
     public static final String C_NEW_PATH_POPUP = "qvr";
+    public static final String S_PATH_POPUP = "No popup copy for path level client data ";
     public static final String C_PATH_SECTION_FILTER = "cao";
+    public static final String[] C_PATH_SECTION_FILTERS = {C_PATH_SECTION_FILTER, "bxc"};
     public static final String C_PATH_SECTION = "com.duolingo.data.path.common.CoursePathSection";
     public static final String C_PATH_UNIT = "wzh";
+    public static final String[] C_PATH_UNITS = {C_PATH_UNIT, "e7h"};
     public static final String C_PATH_VECTOR = "com.duolingo.core.pcollections.migration.PVector";
     public static final String C_PATH_LEVEL_STATE = "com.duolingo.data.path.common.PathLevelState";
 

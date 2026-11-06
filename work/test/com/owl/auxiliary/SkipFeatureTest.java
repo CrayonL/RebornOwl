@@ -9,7 +9,7 @@ import java.util.Collections;
 public final class SkipFeatureTest {
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && "--host".equals(args[0])) {
-            verifyHost();
+            verifyHost(args[1], args[2]);
             return;
         }
         Method rewrite = SkipFeature.class.getDeclaredMethod("rewriteSession", Object[].class);
@@ -32,15 +32,18 @@ public final class SkipFeatureTest {
         System.out.println("PASS SkipFeature: zero length, input isolation, nullable and invalid arguments");
     }
 
-    private static void verifyHost() throws Exception {
-        Class<?> settings = Class.forName("ep00");
+    private static void verifyHost(String version, String apk) throws Exception {
+        ClassLoader loader = new dalvik.system.PathClassLoader(apk,
+                ClassLoader.getSystemClassLoader().getParent());
+        boolean current = "6.104.5-china".equals(version);
+        Class<?> settings = Class.forName(current ? "cgz" : "ep00", true, loader);
         Object defaults = settings.getField("l").get(null);
         Object[] values = new Object[11];
         for (int i = 0; i < values.length; i++) {
             values[i] = settings.getField(String.valueOf((char) ('a' + i))).get(defaults);
         }
         Constructor<?> constructor = settings.getConstructors()[0];
-        Class<?> predicate = Class.forName("c050");
+        Class<?> predicate = Class.forName(current ? "co00" : "c050", true, loader);
         Object endCheck = predicate.getConstructor(int.class).newInstance(18);
         Method apply = predicate.getMethod("apply", Object.class, Object.class, Object.class);
         values[3] = null;
@@ -54,7 +57,7 @@ public final class SkipFeatureTest {
                 "长度一时未答题不得结束");
         require(Boolean.TRUE.equals(apply.invoke(endCheck, 1, 20, constructor.newInstance(values))),
                 "长度一时已答一题应结束");
-        System.out.println("HOST_SKIP_PREDICATE_PASS: real 6.103.6 classes, no session or network operation");
+        System.out.println("HOST_SKIP_PREDICATE_PASS: " + version + ", no session or network operation");
     }
 
     private static void expectRejected(Method method, Object[] values) throws Exception {

@@ -27,10 +27,27 @@ public class UnlockLessonsFeature extends Feature {
     public String label() { return "解锁关卡"; }
 
     @Override
+    public void check(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
+        Class<?> level = Locator.byKey(Targets.S_PATH_LEVEL, lpp.classLoader);
+        Class<?> state = Class.forName(Targets.C_PATH_LEVEL_STATE, false, lpp.classLoader);
+        if (level == null || !state.isEnum()) { throw new IllegalStateException("路径节点或状态枚举缺失"); }
+        findStateField(level, state);
+        findCopyMethod(level, state);
+        state.getField("ACTIVE");
+        converter(lpp.classLoader, level);
+        sessionTargets(Locator.byKey(Targets.S_PATH_SESSION_STATE, lpp.classLoader), level);
+        UnlockPopupData.check(lpp.classLoader);
+    }
+
+    private static Class<?> converter(ClassLoader loader, Class<?> level) {
+        return Locator.byContract(loader, Targets.C_NEW_PATH_CONVERTERS, type -> findNodeConverter(type, level));
+    }
+
+    @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
         Class<?> level = Locator.byKey(Targets.S_PATH_LEVEL, lpp.classLoader);
         Class<?> state = Locator.byName(Targets.C_PATH_LEVEL_STATE, lpp.classLoader);
-        Class<?> converter = Locator.byName(Targets.C_NEW_PATH_CONVERTER, lpp.classLoader);
+        Class<?> converter = converter(lpp.classLoader, level);
         if (level == null || converter == null || state == null || !state.isEnum()) {
             throw new IllegalStateException("解锁关卡：未定位新版路径节点或状态枚举");
         }
@@ -38,12 +55,12 @@ public class UnlockLessonsFeature extends Feature {
         Class<?> session = Locator.byKey(Targets.S_PATH_SESSION_STATE, lpp.classLoader);
         hookSessions(session, level, copier);
         UnlockPopupData.install(lpp.classLoader, copier);
-        XposedBridge.hookMethod(findNodeConverter(converter, level), new XC_MethodHook() {
+        XposedBridge.hookMethod(findNodeConverter(converter, level), new DiagnosticHook(Config.K_UNLOCK) {
             private final java.util.concurrent.atomic.AtomicBoolean reported =
                     new java.util.concurrent.atomic.AtomicBoolean();
 
             @Override
-            public void beforeHookedMethod(MethodHookParam param) throws Throwable {
+            public void before(MethodHookParam param) throws Throwable {
                 Object[] rewritten = rewriteNode(param.args, copier);
                 if (rewritten != param.args && reported.compareAndSet(false, true)) {
                     Logx.i("解锁关卡：新版路径节点副本已实际生成");
@@ -55,20 +72,13 @@ public class UnlockLessonsFeature extends Feature {
     }
 
     private static void hookSessions(Class<?> session, Class<?> level, SessionCopy copier) {
-        if (session == null) { throw new IllegalStateException("解锁关卡：点击会话模型缺失"); }
-        java.util.List<Constructor<?>> targets = new java.util.ArrayList<>();
-        for (Constructor<?> constructor : session.getDeclaredConstructors()) {
-            Class<?>[] types = constructor.getParameterTypes();
-            if ((types.length == SESSION_ARGUMENT_COUNT || types.length == DEFAULT_SESSION_ARGUMENT_COUNT)
-                    && types[0] == level) { targets.add(constructor); }
-        }
-        if (targets.size() != 2) { throw new IllegalStateException("解锁关卡：点击会话构造契约不匹配"); }
-        XC_MethodHook callback = new XC_MethodHook() {
+        java.util.List<Constructor<?>> targets = sessionTargets(session, level);
+        XC_MethodHook callback = new DiagnosticHook(Config.K_UNLOCK) {
             private final java.util.concurrent.atomic.AtomicBoolean reported =
                     new java.util.concurrent.atomic.AtomicBoolean();
 
             @Override
-            public void beforeHookedMethod(MethodHookParam param) throws Throwable {
+            public void before(MethodHookParam param) throws Throwable {
                 Object[] rewritten = rewriteSession(param.args, copier);
                 if (rewritten != param.args && reported.compareAndSet(false, true)) {
                     Logx.i("解锁关卡：点击会话副本已实际生成");
@@ -77,6 +87,18 @@ public class UnlockLessonsFeature extends Feature {
             }
         };
         for (Constructor<?> constructor : targets) { XposedBridge.hookMethod(constructor, callback); }
+    }
+
+    private static java.util.List<Constructor<?>> sessionTargets(Class<?> session, Class<?> level) {
+        if (session == null) { throw new IllegalStateException("解锁关卡：点击会话模型缺失"); }
+        java.util.List<Constructor<?>> targets = new java.util.ArrayList<>();
+        for (Constructor<?> constructor : session.getDeclaredConstructors()) {
+            Class<?>[] types = constructor.getParameterTypes();
+            if ((types.length == SESSION_ARGUMENT_COUNT || types.length == DEFAULT_SESSION_ARGUMENT_COUNT)
+                    && types[0] == level) { targets.add(constructor); }
+        }
+        if (targets.size() != 2) { throw new IllegalStateException("解锁关卡：点击会话构造契约不匹配"); }
+        return targets;
     }
 
     static Method findNodeConverter(Class<?> converter, Class<?> level) {

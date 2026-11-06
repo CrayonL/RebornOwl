@@ -14,6 +14,9 @@ public abstract class Feature {
     /** 中文名称（设置页展示）。 */
     public abstract String label();
 
+    /** 检查所需目标结构；不得注册 Hook、修改宿主数据或更改开关。 */
+    public abstract void check(XC_LoadPackage.LoadPackageParam lpp) throws Throwable;
+
     /** 装载 hook。抛出的异常由 {@link FeatureManager} 捕获并记录。 */
     public abstract void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable;
 
