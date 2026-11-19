@@ -31,17 +31,18 @@ public class MusicUnlockFeature extends Feature {
         targets(lpp, access);
     }
 
-    private static List<Constructor<?>> targets(XC_LoadPackage.LoadPackageParam lpp, Class<?> access) {
-        Class<?> music = Locator.byKeyOrName(Targets.S_MUSIC, null, lpp.classLoader);
-        if (music == null) { throw new IllegalStateException("未定位 Music 模型"); }
-        List<Constructor<?>> result = constructors(music, access);
-        String[] renamed = Targets.C_MUSIC_RENAMED_1045;
-        int renamedStart = Targets.C_MUSIC_ACCESS_MODELS.length - renamed.length;
-        for (int index = 0; index < Targets.C_MUSIC_ACCESS_MODELS.length; index++) {
-            String original = Targets.C_MUSIC_ACCESS_MODELS[index];
-            String[] names = index < renamedStart ? new String[]{original}
-                    : new String[]{original, renamed[index - renamedStart]};
-            Class<?> model = Locator.byContract(lpp.classLoader, names, type -> constructors(type, access));
+    private static List<Constructor<?>> targets(XC_LoadPackage.LoadPackageParam lpp, Class<?> access)
+            throws ClassNotFoundException {
+        Class<?> music = Locator.byKeyContract(lpp.classLoader, Targets.S_MUSIC, type -> constructors(type, access));
+        List<String> candidates = DexIndex.findClassesWithMethod("<init>", "V",
+                "L" + access.getName().replace('.', '/') + ";");
+        if (!candidates.contains("L" + music.getName().replace('.', '/') + ";")) {
+            throw new IllegalStateException("音乐模型不在权限构造候选中");
+        }
+        List<Constructor<?>> result = new ArrayList<>();
+        for (String candidate : candidates) {
+            Class<?> model = Class.forName(Locator.descToName(candidate), false, lpp.classLoader);
+            Locator.uniqueField(model, access);
             result.addAll(constructors(model, access));
         }
         return result;

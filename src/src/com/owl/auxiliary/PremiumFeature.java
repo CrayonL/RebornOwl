@@ -19,7 +19,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 /**
  * 会员解锁。
  *
- * <p>四层协作：
+ * <p>三层协作：
  * <ol>
  *   <li><b>视图层</b>：hook {@code PlusViewModel} 中返回类型为
  *       {@code DashboardFeatureDisplayStatus} 的方法，直接 {@code setResult(SUPPORTED)}；</li>
@@ -30,7 +30,6 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  *   <li><b>拽姐视频通话</b>（无独立开关，随本功能开启；**受服务端限制、无法解锁**，
  *       仅为入口改道）：Max 功能组注入 + 控制板「开始视频通话」点击改直接开呼
  *       （见 {@link #applyVideoCall}）；</li>
- *   <li><b>计费层</b>：hook Play Billing 相关类（见 {@link #applyBilling}）。</li>
  * </ol>
  */
 public class PremiumFeature extends Feature {
@@ -47,7 +46,7 @@ public class PremiumFeature extends Feature {
 
     @Override
     public void check(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
-        Class<?> model = Class.forName(Targets.C_PLUS_VIEW_MODEL, false, lpp.classLoader);
+        Class<?> model = dashboardModel(lpp.classLoader);
         Class<?> status = Class.forName(Targets.C_DASH_STATUS, false, lpp.classLoader);
         if (status.getField(Targets.F_DASH_SUPPORTED).getType() != status
                 || java.util.Arrays.stream(model.getDeclaredMethods())
@@ -69,25 +68,43 @@ public class PremiumFeature extends Feature {
         Class.forName(Targets.C_VIDEO_CALL_ACTIVITY, false, lpp.classLoader);
     }
 
+    private static Class<?> user(ClassLoader loader) {
+        return Locator.byKeyContract(loader, Targets.S_USER, type -> {
+            Class<?> tier = Class.forName("com.duolingo.data.user.SubscriberLevel", false, loader);
+            UserContract.parameters(type, tier);
+        });
+    }
+
     private static void checkUser(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
-        Class<?> user = Locator.byKeyOrName(Targets.S_USER, null, lpp.classLoader);
+        Class<?> user = user(lpp.classLoader);
         if (user == null) { throw new IllegalStateException("会员数据：User 类缺失"); }
         Class<?> tier = Class.forName("com.duolingo.data.user.SubscriberLevel", false, lpp.classLoader);
         tier.getField(Targets.F_TIER_GOLD);
         tier.getField(Targets.F_TIER_PREMIUM);
-        for (Constructor<?> ctor : user.getDeclaredConstructors()) {
-            Class<?>[] types = ctor.getParameterTypes();
-            int index = java.util.Arrays.asList(types).indexOf(tier);
-            int max = index + Targets.USER_ARG_HAS_MAX_OFFSET;
-            if (index >= 0 && max < types.length && types[max] == boolean.class) { return; }
-        }
-        throw new IllegalStateException("会员数据：等级或 hasMax 参数不匹配");
+        UserContract.parameters(user, tier);
+    }
+
+    static Class<?> dashboardModel(ClassLoader loader) {
+        String[] names = DexIndex.findClassesWithMethod(null, "L" + Targets.C_DASH_STATUS.replace('.', '/') + ";",
+                "Ljava/util/Set;").stream().map(Locator::descToName).toArray(String[]::new);
+        return Locator.byContract(loader, names, type -> {
+            Class<?> status = Class.forName(Targets.C_DASH_STATUS, false, loader);
+            if (type.isEnum() || java.util.Arrays.stream(type.getDeclaredMethods()).noneMatch(m -> m.getReturnType() == status)) {
+                throw new IllegalStateException("会员视图状态方法缺失");
+            }
+        });
     }
 
     private static Class<?> dashboardFactory(ClassLoader loader) {
-        return Locator.byContract(loader, Targets.C_DASHBOARD_CLICK_FACTORIES, type -> {
-            type.getDeclaredConstructor(Class.forName(Targets.C_PLUS_VIEW_MODEL, false, loader), int.class);
+        Class<?> model = dashboardModel(loader);
+        String[] names = DexIndex.findClassesWithMethod("<init>", "V", DexCode.descriptor(model)).stream()
+                .map(Locator::descToName).toArray(String[]::new);
+        return Locator.byContract(loader, names, type -> {
             dashboardInvoke(type);
+            if (java.util.Arrays.stream(type.getDeclaredConstructors()).noneMatch(ctor ->
+                    java.util.Collections.frequency(java.util.Arrays.asList(ctor.getParameterTypes()), model) == 1)) {
+                throw new IllegalStateException("会员点击工厂没有唯一模型参数");
+            }
         });
     }
 
@@ -105,7 +122,6 @@ public class PremiumFeature extends Feature {
         applyDashboard(lpp);
         applyUser(lpp);
         applyVideoCall(lpp);
-        applyBilling(lpp);
     }
 
     /** 当前配置的会员等级：true = Max，false = Super。 */
@@ -132,7 +148,7 @@ public class PremiumFeature extends Feature {
     // ---------------------------------------------------------------- 视图层
 
     private void applyDashboard(XC_LoadPackage.LoadPackageParam lpp) {
-        Class<?> pvm = Locator.byName(Targets.C_PLUS_VIEW_MODEL, lpp.classLoader);
+        Class<?> pvm = dashboardModel(lpp.classLoader);
         Class<?> status = Locator.byName(Targets.C_DASH_STATUS, lpp.classLoader);
         if (pvm == null || status == null) {
             FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(视图)：PlusViewModel/DashboardFeatureDisplayStatus 缺失", null);
@@ -164,101 +180,35 @@ public class PremiumFeature extends Feature {
 
     /** 取 DashboardFeatureDisplayStatus 的 SUPPORTED 常量（枚举或静态字段）。 */
     private static Object supportedConstant(Class<?> status) {
-        try {
-            return XposedHelpers.getStaticObjectField(status, Targets.F_DASH_SUPPORTED);
-        } catch (Throwable ignored) {
-        }
-        // 回退：枚举常量中名字含 SUPPORTED 者
-        try {
-            Object[] cs = status.getEnumConstants();
-            if (cs != null) {
-                for (Object c : cs) {
-                    if (String.valueOf(c).toUpperCase().contains("SUPPORT")) {
-                        return c;
-                    }
-                }
-                if (cs.length > 0) {
-                    return cs[0];
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        // 回退：任意名为 SUPPORTED 的静态字段
-        try {
-            for (java.lang.reflect.Field f : status.getDeclaredFields()) {
-                if (f.getName().toUpperCase().contains("SUPPORT") && Modifier.isStatic(f.getModifiers())) {
-                    f.setAccessible(true);
-                    return f.get(null);
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        return null;
+        return enumConstant(status, Targets.F_DASH_SUPPORTED);
     }
 
-    // ---------------------------------------------------------------- 数据层
-
-    private void applyUser(XC_LoadPackage.LoadPackageParam lpp) {
-        Class<?> user = Locator.byKeyOrName(Targets.S_USER, null, lpp.classLoader);
-        if (user == null) {
-            FeatureDiagnostics.failure(Config.K_PREMIUM, "会员解锁(数据)：未定位 User 类", null);
-            return;
+    private void applyUser(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
+        Class<?> user = user(lpp.classLoader);
+        Class<?> tier = Class.forName("com.duolingo.data.user.SubscriberLevel", false, lpp.classLoader);
+        Object wanted = enumConstant(tier, targetTierName());
+        boolean max = isMaxLevel();
+        for (java.util.Map.Entry<Constructor<?>, int[]> entry : UserContract.parameters(user, tier).entrySet()) {
+            int[] indices = entry.getValue();
+            XposedBridge.hookMethod(entry.getKey(), new DiagnosticHook(Config.K_PREMIUM) {
+                @Override
+                public void before(MethodHookParam param) {
+                    Object[] rewritten = param.args.clone();
+                    rewritten[indices[0]] = wanted;
+                    if (indices[1] >= 0) { rewritten[indices[1]] = max; }
+                    param.args = rewritten;
+                }
+            });
         }
-        final String tierName = targetTierName();
-        final boolean max = isMaxLevel();
-        XposedBridge.hookAllConstructors(user, new DiagnosticHook(Config.K_PREMIUM) {
-            @Override
-            public void before(MethodHookParam param) {
-                Object[] args = param.args;
-                if (args == null) {
-                    return;
-                }
-                for (int i = 0; i < args.length; i++) {
-                    Object a = args[i];
-                    if (!(a instanceof Enum)) {
-                        continue;
-                    }
-                    String cls = a.getClass().getSimpleName();
-                    if (!cls.contains("SubscriberLevel") && !cls.contains("Tier")
-                            && !cls.contains("Plan")) {
-                        continue;
-                    }
-                    Object want = enumConstant(a.getClass(), tierName);
-                    if (want != null && want != a) {
-                        args[i] = want;
-                    }
-                    // 同步 hasMax：SubscriberLevel 实参下标 + 固定偏移（见 Targets 注释）
-                    int hi = i + Targets.USER_ARG_HAS_MAX_OFFSET;
-                    if (hi >= 0 && hi < args.length && args[hi] instanceof Boolean
-                            && ((Boolean) args[hi]) != max) {
-                        args[hi] = Boolean.valueOf(max);
-                    }
-                }
-            }
-        });
-        Logx.i("会员解锁(数据)：已 hook " + user.getName() + " 构造器 → 等级 " + tierName
-                + "（" + (max ? "Max" : "Super") + "）");
+        Logx.i("会员解锁(数据)：已按序列化字段定位等级和 hasMax → " + targetTierName());
     }
 
     private static Object enumConstant(Class<?> enumClass, String name) {
-        try {
-            Object[] cs = enumClass.getEnumConstants();
-            if (cs == null) {
-                return null;
-            }
-            for (Object c : cs) {
-                if (name.equals(((Enum<?>) c).name())) {
-                    return c;
-                }
-            }
-            for (Object c : cs) {
-                if (((Enum<?>) c).name().contains(name)) {
-                    return c;
-                }
-            }
-        } catch (Throwable ignored) {
+        if (!enumClass.isEnum()) { throw new IllegalStateException("会员目标不是枚举：" + enumClass.getName()); }
+        for (Object value : enumClass.getEnumConstants()) {
+            if (name.equals(((Enum<?>) value).name())) { return value; }
         }
-        return null;
+        throw new IllegalStateException("会员枚举缺失：" + enumClass.getName() + "." + name);
     }
 
     /** 按名字批量解析枚举常量；名字找不到的跳过并记日志。 */
@@ -426,7 +376,7 @@ public class PremiumFeature extends Feature {
             }
             Object result = param.getResult();
             if (!(result instanceof View.OnClickListener)) {
-                return;
+                throw new IllegalStateException("视频通话工厂未返回点击监听器");
             }
             View.OnClickListener original = (View.OnClickListener) result;
             param.setResult((View.OnClickListener) v -> {
@@ -466,44 +416,4 @@ public class PremiumFeature extends Feature {
         }
     }
 
-    // ---------------------------------------------------------------- 计费层
-
-    /**
-     * Play Billing 伪造（10 个 hook 点）。
-     *
-     * <p><b>TODO</b>：需要在 {@code BillingResult}/{@code ProductDetails}/{@code Purchase}
-     * 的构造器与 {@code BillingFlowParams$Builder.build} 上改写 {@code recurrenceMode}、
-     * {@code offerToken}、{@code ProductId} 等字段，伪造「已购买」。当前只做探测与日志，
-     * 便于在真机确认这些类的实际方法/字段后再补齐改写逻辑。
-     */
-    private void applyBilling(XC_LoadPackage.LoadPackageParam lpp) {
-        String[] candidates = {
-                "com.android.billingclient.api.BillingResult",
-                "com.android.billingclient.api.Purchase",
-                "com.android.billingclient.api.ProductDetails",
-                "com.android.billingclient.api.BillingFlowParams$Builder",
-                "com.android.billingclient.api.BillingFlowParams$ProductDetailsParams$Builder",
-        };
-        for (final String n : candidates) {
-            final boolean[] logged = {false};
-            Class<?> c = Locator.findByName(n, lpp.classLoader);
-            if (c == null) {
-                continue;
-            }
-            try {
-                XposedBridge.hookAllConstructors(c, new DiagnosticHook(Config.K_PREMIUM) {
-                    @Override
-                    public void after(MethodHookParam param) {
-                        if (!logged[0]) {
-                            logged[0] = true;
-                            Logx.i("[billing] " + n + " ctor 首次命中");
-                        }
-                    }
-                });
-                Logx.i("会员解锁(计费)：已探测 " + n);
-            } catch (Throwable t) {
-                Logx.w("会员解锁(计费)：hook " + n + " 失败", t);
-            }
-        }
-    }
 }

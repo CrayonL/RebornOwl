@@ -14,11 +14,6 @@ public class UnlockLessonsFeature extends Feature {
     private static final int COPY_ARGUMENT_COUNT = 5;
     private static final int KEEP_COMPLETED_SESSIONS = 1 << 2;
     private static final int KEEP_CLIENT_DATA = 1 << 4;
-    private static final int NODE_ARGUMENT_COUNT = 23;
-    private static final int NODE_LEVEL_INDEX = 2;
-    private static final int PREVIOUS_LEVEL_INDEX = 3;
-    private static final int SESSION_ARGUMENT_COUNT = 11;
-    private static final int DEFAULT_SESSION_ARGUMENT_COUNT = 9;
 
     @Override
     public String key() { return Config.K_UNLOCK; }
@@ -28,40 +23,50 @@ public class UnlockLessonsFeature extends Feature {
 
     @Override
     public void check(XC_LoadPackage.LoadPackageParam lpp) throws ReflectiveOperationException {
-        Class<?> level = Locator.byKey(Targets.S_PATH_LEVEL, lpp.classLoader);
+        Class<?> level = level(lpp.classLoader);
         Class<?> state = Class.forName(Targets.C_PATH_LEVEL_STATE, false, lpp.classLoader);
         if (level == null || !state.isEnum()) { throw new IllegalStateException("路径节点或状态枚举缺失"); }
         findStateField(level, state);
         findCopyMethod(level, state);
         state.getField("ACTIVE");
         converter(lpp.classLoader, level);
-        sessionTargets(Locator.byKey(Targets.S_PATH_SESSION_STATE, lpp.classLoader), level);
+        sessionTargets(ModelContract.model(lpp.classLoader, Targets.S_PATH_SESSION_STATE, "level", level), level);
         UnlockPopupData.check(lpp.classLoader);
     }
 
+    private static Class<?> level(ClassLoader loader) {
+        return Locator.byKeyContract(loader, Targets.S_PATH_LEVEL, type -> {
+            Class<?> state = Class.forName(Targets.C_PATH_LEVEL_STATE, false, loader);
+            findStateField(type, state);
+            findCopyMethod(type, state);
+        });
+    }
+
     private static Class<?> converter(ClassLoader loader, Class<?> level) {
-        return Locator.byContract(loader, Targets.C_NEW_PATH_CONVERTERS, type -> findNodeConverter(type, level));
+        return Locator.byKeyContract(loader, Targets.S_PATH_CONVERTER, type -> findNodeConverter(type, level));
     }
 
     @Override
     public void apply(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
-        Class<?> level = Locator.byKey(Targets.S_PATH_LEVEL, lpp.classLoader);
+        Class<?> level = level(lpp.classLoader);
         Class<?> state = Locator.byName(Targets.C_PATH_LEVEL_STATE, lpp.classLoader);
         Class<?> converter = converter(lpp.classLoader, level);
         if (level == null || converter == null || state == null || !state.isEnum()) {
             throw new IllegalStateException("解锁关卡：未定位新版路径节点或状态枚举");
         }
         SessionCopy copier = new SessionCopy(level, state);
-        Class<?> session = Locator.byKey(Targets.S_PATH_SESSION_STATE, lpp.classLoader);
+        Class<?> session = ModelContract.model(lpp.classLoader, Targets.S_PATH_SESSION_STATE, "level", level);
         hookSessions(session, level, copier);
         UnlockPopupData.install(lpp.classLoader, copier);
-        XposedBridge.hookMethod(findNodeConverter(converter, level), new DiagnosticHook(Config.K_UNLOCK) {
+        Method node = findNodeConverter(converter, level);
+        final int levelIndex = nodeLevelIndex(node, level);
+        XposedBridge.hookMethod(node, new DiagnosticHook(Config.K_UNLOCK) {
             private final java.util.concurrent.atomic.AtomicBoolean reported =
                     new java.util.concurrent.atomic.AtomicBoolean();
 
             @Override
             public void before(MethodHookParam param) throws Throwable {
-                Object[] rewritten = rewriteNode(param.args, copier);
+                Object[] rewritten = rewriteLevel(param.args, copier, levelIndex);
                 if (rewritten != param.args && reported.compareAndSet(false, true)) {
                     Logx.i("解锁关卡：新版路径节点副本已实际生成");
                 }
@@ -72,66 +77,51 @@ public class UnlockLessonsFeature extends Feature {
     }
 
     private static void hookSessions(Class<?> session, Class<?> level, SessionCopy copier) {
-        java.util.List<Constructor<?>> targets = sessionTargets(session, level);
-        XC_MethodHook callback = new DiagnosticHook(Config.K_UNLOCK) {
-            private final java.util.concurrent.atomic.AtomicBoolean reported =
-                    new java.util.concurrent.atomic.AtomicBoolean();
-
-            @Override
-            public void before(MethodHookParam param) throws Throwable {
-                Object[] rewritten = rewriteSession(param.args, copier);
-                if (rewritten != param.args && reported.compareAndSet(false, true)) {
-                    Logx.i("解锁关卡：点击会话副本已实际生成");
+        for (java.util.Map.Entry<Constructor<?>, Integer> entry : sessionTargets(session, level).entrySet()) {
+            int index = entry.getValue();
+            XposedBridge.hookMethod(entry.getKey(), new DiagnosticHook(Config.K_UNLOCK) {
+                @Override
+                public void before(MethodHookParam param) throws Throwable {
+                    param.args = rewriteLevel(param.args, copier, index);
                 }
-                param.args = rewritten;
-            }
-        };
-        for (Constructor<?> constructor : targets) { XposedBridge.hookMethod(constructor, callback); }
+            });
+        }
     }
 
-    private static java.util.List<Constructor<?>> sessionTargets(Class<?> session, Class<?> level) {
+    private static java.util.Map<Constructor<?>, Integer> sessionTargets(Class<?> session, Class<?> level) {
         if (session == null) { throw new IllegalStateException("解锁关卡：点击会话模型缺失"); }
-        java.util.List<Constructor<?>> targets = new java.util.ArrayList<>();
-        for (Constructor<?> constructor : session.getDeclaredConstructors()) {
-            Class<?>[] types = constructor.getParameterTypes();
-            if ((types.length == SESSION_ARGUMENT_COUNT || types.length == DEFAULT_SESSION_ARGUMENT_COUNT)
-                    && types[0] == level) { targets.add(constructor); }
-        }
-        if (targets.size() != 2) { throw new IllegalStateException("解锁关卡：点击会话构造契约不匹配"); }
-        return targets;
+        return ModelContract.parameters(session, "level", level);
     }
 
     static Method findNodeConverter(Class<?> converter, Class<?> level) {
+        java.util.List<String> nodes = DexIndex.findClassesContaining("Node(key=");
         Method target = null;
         for (Method method : converter.getDeclaredMethods()) {
-            Class<?>[] types = method.getParameterTypes();
-            if (!Modifier.isStatic(method.getModifiers()) || types.length != NODE_ARGUMENT_COUNT
-                    || types[0] != converter || types[NODE_LEVEL_INDEX] != level
-                    || types[PREVIOUS_LEVEL_INDEX] != level || method.getReturnType() == void.class) { continue; }
-            if (target != null) { throw new IllegalStateException("解锁关卡：新版节点转换入口不唯一"); }
+            if (!nodes.contains(DexCode.descriptor(method.getReturnType()))
+                    || !java.util.Arrays.asList(method.getParameterTypes()).contains(level)) { continue; }
+            nodeLevelIndex(method, level);
+            if (target != null) { throw new IllegalStateException("解锁关卡：节点转换入口不唯一"); }
             target = method;
         }
-        if (target == null) { throw new IllegalStateException("解锁关卡：新版节点转换入口缺失"); }
+        if (target == null) { throw new IllegalStateException("解锁关卡：节点转换入口缺失"); }
         return target;
     }
 
-    static Object[] rewriteNode(Object[] args, SessionCopy copier) throws ReflectiveOperationException {
-        if (args == null || args.length != NODE_ARGUMENT_COUNT) {
-            throw new IllegalArgumentException("解锁关卡：新版节点参数不匹配");
+    private static int nodeLevelIndex(Method method, Class<?> level) {
+        String[] signature = java.util.Arrays.stream(method.getParameterTypes()).map(DexCode::descriptor).toArray(String[]::new);
+        String field = DexCode.descriptor(level) + ":" + ModelContract.fieldName(DexCode.descriptor(level), "id");
+        for (DexCode code : DexCode.methods(DexCode.descriptor(method.getDeclaringClass()))) {
+            if (!code.name.equals(method.getName()) || !java.util.Arrays.equals(code.parameters, signature)) { continue; }
+            int index = DexParameters.entryRead(code, field);
+            if (method.getParameterTypes()[index] != level) { throw new IllegalStateException("节点标识参数类型不匹配"); }
+            return index;
         }
-        return rewriteLevel(args, copier, NODE_LEVEL_INDEX);
+        throw new IllegalStateException("节点转换器 DEX 方法缺失");
     }
 
-    static Object[] rewriteSession(Object[] args, SessionCopy copier) throws ReflectiveOperationException {
-        if (args == null || (args.length != SESSION_ARGUMENT_COUNT
-                && args.length != DEFAULT_SESSION_ARGUMENT_COUNT)) {
-            throw new IllegalArgumentException("解锁关卡：点击会话参数不匹配");
-        }
-        return rewriteLevel(args, copier, 0);
-    }
-
-    private static Object[] rewriteLevel(Object[] args, SessionCopy copier, int index)
+    static Object[] rewriteLevel(Object[] args, SessionCopy copier, int index)
             throws ReflectiveOperationException {
+        if (args == null || index < 0 || index >= args.length) { throw new IllegalArgumentException("关卡参数缺失"); }
         Object original = args[index];
         Object unlocked = copier.copyLevel(original);
         if (unlocked == original) { return args; }

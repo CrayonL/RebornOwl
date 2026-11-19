@@ -4,10 +4,10 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from clock_hook_test import FIXTURES as CLOCK_FIXTURES
+from clock_hook_test import FIXTURES as CLOCK_FIXTURES, fixture_dex
 
 MODELS = [
-    'nt8', 'fk4', 'ok4', 'pk4', 'zmq',
+    'RenamedMusic', 'RenamedPlay', 'RenamedNote', 'RenamedPrep', 'RenamedSession',
     'com.duolingo.core.music.licensed.LicensedMusicPathData',
     'com.duolingo.data.home.music.LicensedMusicDetails',
     'com.duolingo.data.home.music.LicensedSessionData',
@@ -46,6 +46,8 @@ import java.util.*;
 public class MusicHookProbe {
     public static void main(String[] names) throws Throwable {
         Logx.setMirror(false);
+        DexFixture.load(names[names.length - 1]);
+        names = Arrays.copyOf(names, names.length - 1);
         XC_LoadPackage.LoadPackageParam lpp = new XC_LoadPackage.LoadPackageParam();
         lpp.classLoader = MusicHookProbe.class.getClassLoader();
         new MusicUnlockFeature().apply(lpp);
@@ -124,14 +126,13 @@ def fixtures():
         }''')
     sources[ACCESS.replace('.', '/') + '.java'] = '''package com.duolingo.core.music.licensed;
     public enum LicensedMusicAccess { FULL, TASTER, NONE, OTHER }'''
-    sources['com/owl/auxiliary/DexIndex.java'] = '''package com.owl.auxiliary;
-    public class DexIndex {
-        public static String findClassContaining(String key) { return "Lnt8;"; }
-    }'''
+    sources['com/owl/auxiliary/DexFixture.java'] = CLOCK_FIXTURES['com/owl/auxiliary/DexFixture.java']
     for model in MODELS:
         package, _, name = model.rpartition('.')
         code = f'package {package};\n' if package else ''
-        code += f'public class {name} {{ public {name}() {{}}\n'
+        code += f'public class {name} {{ public {ACCESS} renamedAccess; public {name}() {{}}\n'
+        if name == 'RenamedMusic':
+            code += 'public String toString() { return "Music(courseSummary="; }\n'
         code += f'public {name}(Object before, {ACCESS} access, Object after) {{}}\n'
         if name == 'LicensedMusicDetails':
             code += f'public {name}(int mask, Object before, {ACCESS} access, Object after) {{}}\n'
@@ -165,8 +166,9 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding='utf-8')
         run(compiler + [str(folder / name) for name in sources])
+        dex = fixture_dex(args, folder, classes)
         run([str(args.jdk / 'bin/java.exe'), '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8',
-             '-cp', classpath, 'MusicHookProbe'] + MODELS)
+             '-cp', classpath, 'MusicHookProbe'] + MODELS + [str(dex)])
 
 
 if __name__ == '__main__':

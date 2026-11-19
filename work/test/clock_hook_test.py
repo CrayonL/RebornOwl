@@ -57,6 +57,18 @@ public class XC_LoadPackage {
     public static class LoadPackageParam { public ClassLoader classLoader; }
 }
 ''',
+    'com/owl/auxiliary/DexFixture.java': r'''
+package com.owl.auxiliary;
+public class DexFixture {
+    public static void load(String path) throws Exception {
+        try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(java.nio.file.Paths.get(path))) {
+            for (java.nio.file.Path file : (Iterable<java.nio.file.Path>) files::iterator) {
+                if (file.toString().endsWith(".dex")) { DexIndex.addDexBytes(java.nio.file.Files.readAllBytes(file)); }
+            }
+        }
+    }
+}
+''',
     'bb7.java': r'''
 import java.time.*;
 import java.util.*;
@@ -68,6 +80,7 @@ public class bb7 {
     public ZoneId f() { throw new AssertionError(); }
     public Instant g() { throw new AssertionError(); }
     public LocalDate h() { throw new AssertionError(); }
+    public Duration monotonic() { throw new AssertionError(); }
 }
 ''',
     'nqk.java': r'''
@@ -94,6 +107,8 @@ import java.util.*;
 public class ClockHookProbe {
     public static void main(String[] args) throws Throwable {
         Logx.setMirror(false);
+        DexFixture.load(args[args.length - 1]);
+        args = Arrays.copyOf(args, args.length - 1);
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
         if (args[0].equals("failure")) { verifyFailure(); return; }
         for (boolean date : new boolean[]{false, true}) {
@@ -170,12 +185,23 @@ def cases():
     collision = 'public class bb7 extends ClassValue<Object> { public Object computeValue(Class<?> c) { return null; } }'
     new = {'bb7.java': collision, 'nqk.java': 'public class nqk {}',
            'cf7.java': new_clock, 'hzk.java': new_instant}
+    renamed = old_clock.replace('bb7', 'UnknownClock').replace('nqk', 'UnknownInstant')
+    for name in ('a', 'c', 'd', 'e', 'f', 'g', 'h'):
+        renamed = renamed.replace(' ' + name + '(', ' renamed_' + name + '(')
+    renamed_probe = FIXTURES['ClockHookProbe.java']
+    for name in ('a', 'c', 'd', 'e', 'f', 'g', 'h'):
+        renamed_probe = renamed_probe.replace('read("' + name + '"', 'read("renamed_' + name + '"')
     return [
         ('6.103.6', {}, ['bb7', 'nqk']),
         ('6.104.4', new, ['cf7', 'hzk']),
         ('6.104.5-china', {'bb7.java': collision, 'nqk.java': 'public class nqk {}',
                          'a07.java': old_clock.replace('bb7', 'a07').replace('nqk', 'j0k'),
                          'j0k.java': FIXTURES['nqk.java'].replace('nqk', 'j0k')}, ['a07', 'j0k']),
+        ('renamed', {'bb7.java': None, 'nqk.java': None, 'UnknownClock.java': renamed,
+                     'UnknownInstant.java': FIXTURES['nqk.java'].replace('nqk', 'UnknownInstant'),
+                     'ClockHookProbe.java': renamed_probe}, ['UnknownClock', 'UnknownInstant']),
+        ('duplicate-method', {'bb7.java': old_clock.replace('public Duration monotonic()',
+             'public Instant another() { throw new AssertionError(); } public Duration monotonic()')}, ['failure']),
         ('missing', {'bb7.java': None, 'nqk.java': None}, ['failure']),
         ('wrong-return', dict(new, **{'cf7.java': new_clock.replace('Instant g()', 'String g()')}), ['failure']),
         ('wrong-instant', dict(new, **{'hzk.java': 'public class hzk {}'}), ['failure']),
@@ -184,7 +210,18 @@ def cases():
     ]
 
 
-def run_case(args, case):
+def fixture_dex(args, folder, classes):
+    dex = folder / 'dex'
+    dex.mkdir()
+    run([str(args.jdk / 'bin/java.exe'), '-cp',
+         str(args.sdk / 'build-tools/36.1.0/lib/d8.jar'), 'com.android.tools.r8.D8',
+         '--min-api', '26', '--output', str(dex),
+         '--lib', str(args.sdk / 'platforms/android-35/android.jar')]
+        + list(map(str, classes.rglob('*.class'))))
+    return dex
+
+
+def run_case(args, case, production):
     label, overrides, probe_args = case
     root = Path(__file__).resolve().parents[2]
     dependencies = [args.sdk / 'platforms/android-35/android.jar',
@@ -193,18 +230,17 @@ def run_case(args, case):
         folder = Path(temp)
         classes = folder / 'classes'
         classes.mkdir()
-        classpath = ';'.join(map(str, [classes] + dependencies))
-        sources = list((root / 'src/src').rglob('*.java'))
+        classpath = ';'.join(map(str, [classes, production] + dependencies))
         compiler = [str(args.jdk / 'bin/javac.exe'), '-encoding', 'UTF-8', '-cp', classpath, '-d', str(classes)]
-        run(compiler + list(map(str, sources)))
         fixtures = {name: content for name, content in dict(FIXTURES, **overrides).items() if content is not None}
         for name, content in fixtures.items():
             target = folder / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding='utf-8')
         run(compiler + [str(folder / name) for name in fixtures])
+        dex = fixture_dex(args, folder, classes)
         run([str(args.jdk / 'bin/java.exe'), '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8',
-             '-cp', classpath, 'ClockHookProbe'] + probe_args)
+             '-cp', classpath, 'ClockHookProbe'] + probe_args + [str(dex)])
         print('CLOCK_CASE_PASS:', label, flush=True)
 
 
@@ -213,8 +249,15 @@ def main():
     parser.add_argument('--sdk', type=Path, required=True)
     parser.add_argument('--jdk', type=Path, required=True)
     args = parser.parse_args()
-    for case in cases():
-        run_case(args, case)
+    root = Path(__file__).resolve().parents[2]
+    with tempfile.TemporaryDirectory(prefix='clock-base-', dir=root / 'work') as temp:
+        production = Path(temp)
+        deps = [args.sdk / 'platforms/android-35/android.jar',
+                root / 'work/libxposed-api-101.0.1.jar', root / 'work/xposed-api.jar']
+        run([str(args.jdk / 'bin/javac.exe'), '-encoding', 'UTF-8', '-cp', ';'.join(map(str, deps)),
+             '-d', str(production)] + list(map(str, (root / 'src/src').rglob('*.java'))))
+        for case in cases():
+            run_case(args, case, production)
 
 
 if __name__ == '__main__':

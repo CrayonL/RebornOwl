@@ -110,7 +110,7 @@ def copy_and_anchor_contract(classes):
 
 
 def new_node_contract(classes, source):
-    owner = re.search(r'C_NEW_PATH_CONVERTER\s*=\s*"([^"]+)"', source).group(1)
+    owner = 'cur'  # 6.103.6 独立 APK 契约；生产代码通过特征定位。
     owner = 'L' + owner.replace('.', '/') + ';'
     dex, base = classes[owner]
     candidates = [(sig, code) for sig, access, code in methods(dex, base)
@@ -152,7 +152,7 @@ def click_session_contract(classes, source):
 
 
 def popup_contract(classes, source):
-    name = re.search(r'C_NEW_PATH_POPUP\s*=\s*"([^"]+)"', source).group(1)
+    name = 'qvr'  # 6.103.6 独立 APK 契约。
     dex, base = classes['L' + name + ';']
     code = next(c for (n, _, ps), _, c in methods(dex, base)
                 if n == 'invokeSuspend' and ps == ['Ljava/lang/Object;'])

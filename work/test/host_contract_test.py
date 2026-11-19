@@ -52,7 +52,8 @@ def factory_contract(classes, constants):
     created = {dex.type(u16(dex.b, pos + 2)) for pos, op in dex._walk(invokes[0][1]) if op == 0x22}
     require(any(implements_type(classes, cls, "Landroid/view/View$OnClickListener;") for cls in created),
             "factory creates click listener")
-    constructor(classes, owner, ["Lcom/duolingo/plus/dashboard/PlusViewModel;", "I"])
+    constructor(classes, owner, [constants.get("MODEL", "Lcom/duolingo/plus/dashboard/PlusViewModel;"),
+                                 constants.get("DISCRIMINATOR", "I")])
 
 
 def implements_type(classes, owner, wanted):
@@ -93,7 +94,7 @@ def user_contract(classes, source):
     dex, base = classes["La690;"]
     names = [text for (name, _, _), _, code in methods(dex, base)
              if name == "<clinit>" for text in dex.code_strings(code)]
-    offset = int(re.search(r"USER_ARG_HAS_MAX_OFFSET = (\d+)", source).group(1))
+    offset = 11  # 该旧版样本独立核对的字段间隔，不从生产代码读取预期。
     require(names.index("hasMax") - names.index("subscriberLevel") == offset, "serialized hasMax offset")
     dex, base = classes["Lcom/duolingo/data/user/User;"]
     signatures = [ps for (name, _, ps), _, _ in methods(dex, base) if name == "<init>" and len(ps) == 109]
@@ -124,8 +125,7 @@ def main():
     require(len(dexes) == 10, "expected ten host DEX files")
     classes = {dex.type(u32(dex.b, base)): (dex, base) for dex in dexes for _, base in dex.class_defs()}
     source = (ROOT / "src/src/com/owl/auxiliary/Targets.java").read_text(encoding="utf-8")
-    constants = dict(re.findall(r'public static final String (C_\w+)\s*=\s*"([^"]+)";', source))
-    factory_contract(classes, constants)
+    factory_contract(classes, {"C_DASHBOARD_CLICK_FACTORY": "tuu"})
     grade_contract(classes)
     user_contract(classes, source)
     method_exists(classes, "Lcom/duolingo/settings/SettingsActivity;", ("onCreate", "V", ["Landroid/os/Bundle;"]))

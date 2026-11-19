@@ -55,7 +55,7 @@ public class CompatibilityNoticeProbe {
         Logx.setMirror(false);
         Config.init(args[0]);
         FeatureManager.all().clear(); FeatureManager.all().add(OFF); FeatureManager.all().add(ON);
-        verifyHealthy(); verifyDisabled(); verifySuppression(); verifyRetry(); verifyRuntime(); verifyWriteFailure();
+        verifyHealthy(); verifyBrokenEnabled(); verifyDisabled(); verifySuppression(); verifyRetry(); verifyRuntime(); verifyWriteFailure();
         System.out.println("COMPATIBILITY_NOTICE_PASS: 全功能检测、关闭项无 Hook、无版本告警、持久忽略、新问题与更新重提、失败重试、回调异常");
     }
     private static void verifyHealthy() throws Throwable {
@@ -67,6 +67,11 @@ public class CompatibilityNoticeProbe {
         }
         check(SettingsInjector.shown == 0, "没有异常不能根据版本号弹窗");
         check(FeatureDiagnostics.summary().contains("结构检查通过，未开启"), "关闭与结构正常分别表达");
+    }
+    private static void verifyBrokenEnabled() throws Throwable {
+        reset(); OFF.broken = true; Config.set(OFF.key(), true); FeatureManager.applyAll(null);
+        check(OFF.applies == 0 && ON.applies == 1, "开启项检查失败也不得安装 Hook，其他项继续");
+        check(FeatureDiagnostics.summary().contains("检查失败，未安装 Hook"), "检查失败不能报部分加载");
     }
     private static void verifyDisabled() throws Throwable {
         reset(); OFF.broken = true; FeatureManager.applyAll(null);

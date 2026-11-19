@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory)][string]$JdkRoot,
     [Parameter(Mandatory)][string]$DexDirectory,
     [Parameter(Mandatory)][string]$PythonPath,
-    [ValidateSet('6.103.6', '6.104.5-china')][string]$HostVersion = '6.103.6',
+    [ValidateSet('6.103.6', '6.104.4', '6.104.5-china', '6.106.5-china')][string]$HostVersion = '6.103.6',
     [string]$DeviceSerial,
     [switch]$Offline
 )
@@ -47,17 +47,20 @@ $classes = Join-Path $PSScriptRoot ('work/test-' + [guid]::NewGuid().ToString('N
 New-Item -ItemType Directory -Path $classes | Out-Null
 $sources = Get-ChildItem -LiteralPath "$PSScriptRoot/src/src", "$PSScriptRoot/work/test" -Filter '*.java' -Recurse | ForEach-Object FullName
 Invoke-TestCommand "$JdkRoot/bin/javac.exe" (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options', '-classpath', "$platform;$modern;$xposed", '-d', $classes) + $sources)
-$tests = @('DexIndexRegressionTest', 'CorrectFeatureTest', 'PremiumFeatureTest', 'UnlockLessonsFeatureTest', 'DexIndexTest', 'DateOverrideTest', 'TimezoneFeatureTest', 'SkipFeatureTest')
+$tests = @('DexIndexRegressionTest', 'CorrectFeatureTest', 'PremiumFeatureTest', 'UnlockLessonsFeatureTest', 'AutoAdaptModelTest', 'ModelContractDexTest', 'DexIndexTest', 'DateOverrideTest', 'TimezoneFeatureTest', 'SkipFeatureTest')
 foreach ($test in $tests) {
     Invoke-TestCommand "$JdkRoot/bin/java.exe" @('-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8', '-cp', "$classes;$platform;$modern;$xposed", "com.owl.auxiliary.$test", $DexDirectory)
 }
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_date_contract_test.py", $DexDirectory, $HostVersion)
+Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_auto_adapt_contract_test.py", $DexDirectory, $HostVersion,
+    '--java', "$JdkRoot/bin/java.exe", '--classpath', "$classes;$platform;$modern;$xposed")
 $contracts = if ($HostVersion -eq '6.104.5-china') { @('host_1045_contract_test.py') }
-             else { @('host_contract_test.py', 'host_music_contract_test.py', 'host_unlock_contract_test.py') }
+             elseif ($HostVersion -eq '6.103.6') { @('host_contract_test.py', 'host_music_contract_test.py', 'host_unlock_contract_test.py') }
+             else { @() }
 foreach ($test in $contracts) {
     Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/$test", $DexDirectory)
 }
-foreach ($test in @('premium_feedback_test.py', 'source_link_test.py', 'clock_hook_test.py', 'music_hook_test.py', 'compatibility_notice_test.py')) {
+foreach ($test in @('premium_feedback_test.py', 'source_link_test.py', 'clock_hook_test.py', 'music_hook_test.py', 'model_hook_test.py', 'compatibility_notice_test.py')) {
     Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/$test", '--sdk', $SdkRoot, '--jdk', $JdkRoot)
 }
 $dex = Join-Path $classes 'dex'

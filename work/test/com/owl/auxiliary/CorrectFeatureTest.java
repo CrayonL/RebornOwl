@@ -5,8 +5,8 @@ public final class CorrectFeatureTest {
     public static void main(String[] args) {
         checkScore(float.class, 0.25f, 1.0f);
         checkScore(double.class, 0.25d, 1.0d);
-        CorrectFeature.ArgumentOverride graded =
-                new CorrectFeature.ArgumentOverride(1, boolean.class, Boolean.TRUE);
+        ConstructorValue.Argument graded =
+                new ConstructorValue.Argument(1, boolean.class, Boolean.TRUE);
         Object[] original = {"typo", false, "answer"};
         Object[] corrected = graded.rewrite(original);
         require(Boolean.TRUE.equals(corrected[1]), "correct flag must become true");
@@ -22,7 +22,7 @@ public final class CorrectFeatureTest {
     }
 
     private static void checkScore(Class<?> type, Object before, Object after) {
-        CorrectFeature.ArgumentOverride rule = new CorrectFeature.ArgumentOverride(0, type, after);
+        ConstructorValue.Argument rule = new ConstructorValue.Argument(0, type, after);
         require(rule.supports(new Class<?>[]{type, Object.class}), "score signature supported");
         require(!rule.supports(new Class<?>[]{int.class, Object.class}), "integer mask rejected");
         Object marker = new Object();
@@ -31,7 +31,7 @@ public final class CorrectFeatureTest {
         require(result[1] == marker, "score metadata preserved");
     }
 
-    private static void expectRejected(CorrectFeature.ArgumentOverride rule, Object[] args) {
+    private static void expectRejected(ConstructorValue.Argument rule, Object[] args) {
         try {
             rule.rewrite(args);
         } catch (IllegalArgumentException expected) {

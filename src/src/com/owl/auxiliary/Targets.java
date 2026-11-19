@@ -1,21 +1,11 @@
 package com.owl.auxiliary;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
  * 版本敏感层：所有可能随 Duolingo 版本变化的目标集中于此。
  *
- * <p>6.103.6（2488）安装包离线核对：14 条特征串仍有代码引用。
- * 方法和参数契约见 {@code work/test/host_contract_test.py}；真机效果需单独验收。
- *
- * <p>定位策略固定为三级回退：
- * <ol>
- *   <li>字符串特征定位（{@link Locator}，经 {@link DexIndex}）——版本自适应，首选；</li>
- *   <li>硬编码类名（本类常量）——特征串失效时的兜底；</li>
- *   <li>都失败则记 WARN，绝不静默吞异常。</li>
- * </ol>
+ * <p>时钟、音乐模型和路径目标使用 DEX 签名或特征串，再校验完整结构。
+ * 保留有语义的类型与枚举名称；缺失或歧义不能当作适配成功。
+ * 四版离线契约见 {@code work/test/host_auto_adapt_contract_test.py}；真机效果需单独验收。
  */
 public final class Targets {
 
@@ -24,35 +14,15 @@ public final class Targets {
     public static final String HOST_PKG = "com.duolingo";
     public static final String MODULE_PKG = "io.github.crayonl.rebornowl";
 
-    // ---------- 硬编码类名（兜底） ----------
-    public static final String C_PLUS_VIEW_MODEL = "com.duolingo.plus.dashboard.PlusViewModel";
+    // ---------- 有语义的类型名 ----------
     public static final String C_DASH_STATUS =
             "com.duolingo.plus.dashboard.PlusViewModel$DashboardFeatureDisplayStatus";
     public static final String C_MUSIC_ACCESS = "com.duolingo.core.music.licensed.LicensedMusicAccess";
-    /** 6.103.6 中独立携带音乐权限的歌曲入口、会话与题目模型；真实 DEX 契约逐一核对。 */
-    public static final String[] C_MUSIC_ACCESS_MODELS = {
-            "com.duolingo.core.music.licensed.LicensedMusicPathData",
-            "com.duolingo.data.home.music.SongLandingPathData$LicensedSongLandingData",
-            "com.duolingo.data.home.music.LicensedMusicDetails",
-            "com.duolingo.data.home.music.LicensedSessionData",
-            "fk4", "ok4", "pk4", "zmq",
-    };
-    public static final String[] C_MUSIC_RENAMED_1045 = {"s34", "b44", "c44", "pop"};
     public static final String C_DEBUG_CATEGORY = "com.duolingo.data.debug.settings.DebugCategory";
     public static final String C_DEBUG_CATEGORY_OLD = "com.duolingo.debug.DebugCategory";
     public static final String C_SETTINGS_ACTIVITY = "com.duolingo.settings.SettingsActivity";
     public static final String C_LAUNCH_ACTIVITY = "com.duolingo.splash.LaunchActivity";
     public static final String C_TIME_ZONE = "kotlinx.datetime.TimeZone";
-    /** 兼容版本的唯一来源；按适配顺序维护最近五版，时钟仍须通过完整签名校验。 */
-    public static final Map<String, String> HOST_CLOCKS;
-    static {
-        Map<String, String> clocks = new LinkedHashMap<>();
-        clocks.put("6.103.6", "bb7");
-        clocks.put("6.104.4", "cf7");
-        clocks.put("6.104.5-china", "a07");
-        HOST_CLOCKS = Collections.unmodifiableMap(clocks);
-    }
-    public static final String C_SUBSCRIPTION_PREFIX = "com.duolingo.data.user.Subscrib";
 
     // ---------- 拽姐视频通话（无法解锁——服务端限制；入口改道并入会员解锁） ----------
     /** Max 功能枚举：{@code SubscriptionFeatures}（含 VIDEO_CALL_IN_PATH 等 19 项）。 */
@@ -74,21 +44,6 @@ public final class Targets {
     /** 通话来源：练习基地（无参构造，默认 accessMethod=SUBSCRIPTION、serializedName=practice_hub）。 */
     public static final String C_VC_ORIGIN_PRACTICE_HUB =
             "com.duolingo.data.video.call.VideoCallCallOrigin$PracticeHub";
-    /**
-     * 6.103.6 控制板点击工厂。PlusActivity 与 dashboard.b 均构造此类，
-     * invoke(Object) 的对应分支将 DashboardFeature 转成 View.OnClickListener。
-     *
-     * <p>该类在默认包，查找时使用裸名。旧 j3v 在当前版本已经属于购买页面，
-     * 不能继续作为回退目标。
-     *
-     * <p>实测 6.100.3：{@code invoke(DashboardFeature)} 返回该行的 OnClickListener；
-     * 其中 {@code VIDEO_CALL} 行返回的监听器点击后仅「切到练习基地页签 + 关闭控制板」
-     * （事件 {@code hdv(20)}），并不直接开呼 —— 本模块在此处将点击改为
-     * 「直接启动 VideoCallActivity」（注：该功能受服务端限制、无法解锁，此项仅为入口交互修正）。仅控制板内使用（含
-     * {@code dashboard.b.e} 与 {@code PlusActivity.onCreate} 两处构造点），无其它调用点。
-     */
-    public static final String C_DASHBOARD_CLICK_FACTORY = "tuu";
-    public static final String[] C_DASHBOARD_CLICK_FACTORIES = {C_DASHBOARD_CLICK_FACTORY, "eot"};
     /** 视频通话 intent 的附加项名（VideoCallActivity 视图模型强制要求）。 */
     public static final String E_VIDEO_CALL_CALL_ORIGIN = "call_origin";
     /** 控制板功能枚举中「视频通话」行的常量名（DashboardFeature.VIDEO_CALL）。 */
@@ -116,7 +71,6 @@ public final class Targets {
     // ---------- 字符串特征 ----------
     // 会员
     public static final String S_USER = "User(adsConfig=";
-    public static final String S_PLUS_VIEW_MODEL = "PlusViewModel";
     // 音乐
     public static final String S_MUSIC = "Music(courseSummary=";
     // 强制正确
@@ -135,15 +89,11 @@ public final class Targets {
     // 解锁关卡
     public static final String S_PATH_LEVEL = "GenericPathLevel(id=";
     public static final String S_PATH_SESSION_STATE = "PathLevelSessionState(level=";
-    public static final String C_NEW_PATH_CONVERTER = "cur";
-    public static final String[] C_NEW_PATH_CONVERTERS = {C_NEW_PATH_CONVERTER, "ytq"};
-    public static final String C_NEW_PATH_POPUP = "qvr";
+    public static final String S_PATH_CONVERTER = "migration_review_unit_review";
     public static final String S_PATH_POPUP = "No popup copy for path level client data ";
-    public static final String C_PATH_SECTION_FILTER = "cao";
-    public static final String[] C_PATH_SECTION_FILTERS = {C_PATH_SECTION_FILTER, "bxc"};
+    public static final String S_PATH_UNIT = "GenericPathUnit(index=";
+    public static final String S_PATH_TREATMENT = "HideFuturePathAndUnitsTreatmentRecords(hideFuturePathTreatmentRecords=";
     public static final String C_PATH_SECTION = "com.duolingo.data.path.common.CoursePathSection";
-    public static final String C_PATH_UNIT = "wzh";
-    public static final String[] C_PATH_UNITS = {C_PATH_UNIT, "e7h"};
     public static final String C_PATH_VECTOR = "com.duolingo.core.pcollections.migration.PVector";
     public static final String C_PATH_LEVEL_STATE = "com.duolingo.data.path.common.PathLevelState";
 
@@ -173,15 +123,6 @@ public final class Targets {
     public static final String F_TIER_LITE = "LITE";
     /** {@code com.duolingo.data.user.User} 上的「Max 品牌」布尔字段（序列化名 hasMax）。 */
     public static final String F_USER_HAS_MAX = "hasMax";
-    /**
-     * {@code User} 序列化字段表里 {@code hasMax} 相对 {@code subscriberLevel} 的下标偏移。
-     *
-     * <p>实测 6.99.5：字段序号 79/90（差 11），全参构造器（107 参）内 83/94；
-     * 6.100.3 复测：偏移仍为 11（全参构造器已增至 109 参）。两个版本一致，
-     * 故用「SubscriberLevel 实参下标 + 11」定位 hasMax，避免依赖字段名。
-     */
-    public static final int USER_ARG_HAS_MAX_OFFSET = 11;
-
     /**
      * 宿主版本号：{@code ApplicationInfo} 不含 versionName，这里返回安装路径后缀
      * 以便日志中区分宿主包。

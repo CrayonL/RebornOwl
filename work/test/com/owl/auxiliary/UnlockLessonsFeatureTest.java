@@ -111,19 +111,19 @@ public final class UnlockLessonsFeatureTest {
 
     private static void verifySession(UnlockLessonsFeature.SessionCopy copier) throws Exception {
         java.lang.reflect.Method rewrite = UnlockLessonsFeature.class.getDeclaredMethod(
-                "rewriteSession", Object[].class, UnlockLessonsFeature.SessionCopy.class);
-        for (int length : new int[]{9, 11}) {
+                "rewriteLevel", Object[].class, UnlockLessonsFeature.SessionCopy.class, int.class);
+        for (int length : new int[]{9, 11, 13}) {
             Object[] args = new Object[length];
             for (int index = 0; index < length; index++) { args[index] = new Object(); }
             Level original = new Level(State.LOCKED, 2, new Object());
             args[0] = original;
-            Object[] result = (Object[]) rewrite.invoke(null, args, copier);
+            Object[] result = (Object[]) rewrite.invoke(null, args, copier, 0);
             require(((Level) result[0]).state == State.ACTIVE, "点击会话仍被锁定");
             require(original.state == State.LOCKED && args[0] == original, "不得修改原始路径");
             for (int index = 1; index < length; index++) {
                 require(result[index] == args[index], "不得更改会话参数或当前学习位置");
             }
-            require(rewrite.invoke(null, result, copier) == result, "委托构造不可重复创建副本");
+            require(rewrite.invoke(null, result, copier, 0) == result, "委托构造不可重复创建副本");
         }
     }
 
@@ -134,7 +134,7 @@ public final class UnlockLessonsFeatureTest {
             for (int index = 0; index < length; index++) { args[index] = new Object(); }
             Level original = new Level(state, 2, new Object());
             args[2] = original;
-            Object[] result = UnlockLessonsFeature.rewriteNode(args, copier);
+            Object[] result = UnlockLessonsFeature.rewriteLevel(args, copier, 2);
             boolean locked = state == State.LOCKED || state == State.UNLOCKED;
             require(original.state == state && args[2] == original, "不能改写原始关卡或入参");
             require(((Level) result[2]).state == (locked ? State.ACTIVE : state), "显示副本状态错误");

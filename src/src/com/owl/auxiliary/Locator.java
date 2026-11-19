@@ -13,6 +13,24 @@ public final class Locator {
 
     interface Contract { void verify(Class<?> type) throws ReflectiveOperationException; }
 
+    static Class<?> byKeyContract(ClassLoader loader, String key, Contract contract) {
+        String[] names = DexIndex.findClassesContaining(key).stream()
+                .map(Locator::descToName).distinct().toArray(String[]::new);
+        return byContract(loader, names, contract);
+    }
+
+    static java.lang.reflect.Field uniqueField(Class<?> owner, Class<?> type) {
+        java.lang.reflect.Field result = null;
+        for (java.lang.reflect.Field field : owner.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) || field.getType() != type) { continue; }
+            if (result != null) { throw new IllegalStateException("字段类型不唯一：" + owner + " / " + type); }
+            result = field;
+        }
+        if (result == null) { throw new IllegalStateException("字段类型缺失：" + owner + " / " + type); }
+        result.setAccessible(true);
+        return result;
+    }
+
     /** 候选必须唯一满足完整契约，避免把新版同名的无关类当作兼容目标。 */
     static Class<?> byContract(ClassLoader loader, String[] names, Contract contract) {
         Class<?> resolved = null;

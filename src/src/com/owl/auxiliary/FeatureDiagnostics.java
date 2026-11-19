@@ -18,6 +18,8 @@ final class FeatureDiagnostics {
 
     static synchronized void complete(String key) { RESULTS.get(key).complete = true; }
 
+    static synchronized void attempted(String key) { RESULTS.get(key).attempted = true; }
+
     static synchronized void failure(String key, String reason, Throwable error) {
         Logx.w(reason, error);
         Result result = RESULTS.get(key);
@@ -65,7 +67,7 @@ final class FeatureDiagnostics {
         String state = result.problems.isEmpty() ? "结构检查通过" : "检测到异常";
         if (selected != result.enabled) { return state + "，开关已更改，待重启"; }
         if (!result.enabled) { return state + "，未开启"; }
-        if (!result.problems.isEmpty()) { return "检测到异常，可能已部分加载"; }
+        if (!result.problems.isEmpty()) { return result.attempted ? "检测到异常，可能已部分加载" : "检查失败，未安装 Hook"; }
         return result.complete ? "已加载，实际效果待验证" : "结构检查通过，尚未加载";
     }
 
@@ -75,6 +77,7 @@ final class FeatureDiagnostics {
         final TreeSet<String> problems = new TreeSet<>();
         boolean checked;
         boolean complete;
+        boolean attempted;
 
         Result(String label, boolean enabled) {
             this.label = label;

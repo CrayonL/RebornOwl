@@ -48,6 +48,10 @@ public final class FeatureManager {
                 FeatureDiagnostics.failure(f.key(), "目标检查失败：" + t, t);
             }
             FeatureDiagnostics.checked(f.key());
+            if (FeatureDiagnostics.hasProblems(f.key())) {
+                Logx.i("[检查失败，未加载] " + f.label());
+                continue;
+            }
             // 显式配置优先；配置没写时用功能默认值（defaultOn）。
             boolean on = Config.getOr(f.key(), f.defaultOn());
             if (!on) {
@@ -55,6 +59,7 @@ public final class FeatureManager {
                 continue;
             }
             try {
+                FeatureDiagnostics.attempted(f.key());
                 f.apply(lpp);
                 FeatureDiagnostics.complete(f.key());
                 Logx.i((FeatureDiagnostics.hasProblems(f.key()) ? "[存在异常] " : "[加载完成] ") + f.label());

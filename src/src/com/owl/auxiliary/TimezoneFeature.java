@@ -10,9 +10,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.TimeZone;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -64,50 +62,53 @@ public class TimezoneFeature extends Feature {
     }
 
     private static List<Method> resolveClock(ClassLoader loader, Class<?> kotlinZone) {
-        List<Method> resolved = null;
-        IllegalStateException failure = new IllegalStateException("未找到兼容的宿主时钟");
-        for (String name : Targets.HOST_CLOCKS.values()) {
-            final List<Method> candidate;
-            try {
-                Class<?> host = Class.forName(name, false, loader);
-                candidate = resolveMethods(host, kotlinZone);
-            } catch (ReflectiveOperationException error) {
-                failure.addSuppressed(error);
-                continue;
-            }
-            if (resolved != null) {
-                throw new IllegalStateException("宿主时钟匹配不唯一：" + name);
-            }
-            resolved = candidate;
-        }
-        if (resolved == null) { throw failure; }
-        return resolved;
+        String[] names = DexIndex.findClassesWithMethod(null, "Ljava/util/Calendar;", "Ljava/util/TimeZone;")
+                .stream().map(Locator::descToName).toArray(String[]::new);
+        Class<?> host = Locator.byContract(loader, names, type -> resolveMethods(type, kotlinZone));
+        try { return resolveMethods(host, kotlinZone); }
+        catch (ReflectiveOperationException error) { throw new IllegalStateException("宿主时钟结构不匹配", error); }
     }
 
     private static List<Method> resolveMethods(Class<?> host, Class<?> kotlinZone)
             throws ReflectiveOperationException {
-        Class<?> instant = host.getDeclaredMethod("a").getReturnType();
-        instant.getConstructor(long.class, int.class);
-        Map<String, Class<?>> signatures = new LinkedHashMap<>();
-        signatures.put("a", instant);
-        signatures.put("c", LocalDateTime.class);
-        signatures.put("d", kotlinZone);
-        signatures.put("e", Calendar.class);
-        signatures.put("f", ZoneId.class);
-        signatures.put("g", Instant.class);
-        signatures.put("h", LocalDate.class);
         List<Method> methods = new ArrayList<>();
-        for (Map.Entry<String, Class<?>> entry : signatures.entrySet()) {
-            Class<?>[] parameters = "e".equals(entry.getKey())
-                    ? new Class<?>[]{TimeZone.class} : new Class<?>[0];
-            Method method = host.getDeclaredMethod(entry.getKey(), parameters);
-            if (Modifier.isStatic(method.getModifiers()) || Modifier.isAbstract(method.getModifiers())
-                    || method.getReturnType() != entry.getValue()) {
-                throw new NoSuchMethodException("宿主时钟签名不匹配：" + method);
-            }
-            methods.add(method);
+        methods.add(instantMethod(host));
+        for (Class<?> type : new Class<?>[]{LocalDateTime.class, kotlinZone, Calendar.class,
+                ZoneId.class, Instant.class, LocalDate.class}) {
+            Class<?>[] parameters = type == Calendar.class ? new Class<?>[]{TimeZone.class} : new Class<?>[0];
+            methods.add(methodReturning(host, type, parameters));
         }
         return methods;
+    }
+
+    private static Method instantMethod(Class<?> host) throws NoSuchMethodException {
+        Method result = null;
+        for (Method method : host.getDeclaredMethods()) {
+            if (method.getParameterCount() != 0 || !concreteInstance(method)) { continue; }
+            try { method.getReturnType().getConstructor(long.class, int.class); }
+            catch (NoSuchMethodException ignored) { continue; }
+            if (result != null) { throw new NoSuchMethodException("宿主时间戳方法不唯一：" + host); }
+            result = method;
+        }
+        if (result == null) { throw new NoSuchMethodException("宿主时间戳方法缺失：" + host); }
+        return result;
+    }
+
+    private static Method methodReturning(Class<?> host, Class<?> returned, Class<?>[] parameters)
+            throws NoSuchMethodException {
+        Method result = null;
+        for (Method method : host.getDeclaredMethods()) {
+            if (!concreteInstance(method) || method.getReturnType() != returned
+                    || !java.util.Arrays.equals(method.getParameterTypes(), parameters)) { continue; }
+            if (result != null) { throw new NoSuchMethodException("宿主时钟方法不唯一：" + returned); }
+            result = method;
+        }
+        if (result == null) { throw new NoSuchMethodException("宿主时钟方法缺失：" + returned); }
+        return result;
+    }
+
+    private static boolean concreteInstance(Method method) {
+        return !Modifier.isStatic(method.getModifiers()) && !Modifier.isAbstract(method.getModifiers());
     }
 
     private static final class HostClockHook extends DiagnosticHook {
@@ -125,7 +126,7 @@ public class TimezoneFeature extends Feature {
 
         @Override
         public void before(MethodHookParam param) {
-            String method = param.method.getName();
+            Method method = (Method) param.method;
             final Object result;
             try {
                 result = valueFor(method, param.args);
@@ -133,35 +134,28 @@ public class TimezoneFeature extends Feature {
                 throw new IllegalStateException("宿主时钟返回值构造失败：" + method, error);
             }
             param.setResult(result);
-            if ("h".equals(method) && !result.toString().equals(reportedDate)) {
+            if (method.getReturnType() == LocalDate.class && !result.toString().equals(reportedDate)) {
                 reportedDate = result.toString();
-                Logx.i("宿主时钟：实际读取日期 h() → " + reportedDate + "，时区=" + clock.getZone());
+                Logx.i("宿主时钟：实际读取日期 " + method.getName() + "() → " + reportedDate + "，时区=" + clock.getZone());
             }
         }
 
-        private Object valueFor(String method, Object[] args) throws ReflectiveOperationException {
-            switch (method) {
-                case "a":
-                    Instant instant = clock.instant();
-                    return instantConstructor.newInstance(instant.getEpochSecond(), instant.getNano());
-                case "c":
-                    return LocalDateTime.now(clock);
-                case "d":
-                    return kotlinZone;
-                case "e":
-                    TimeZone zone = args[0] == null ? TimeZone.getTimeZone(clock.getZone()) : (TimeZone) args[0];
-                    Calendar calendar = Calendar.getInstance(zone);
-                    calendar.setTimeInMillis(clock.millis());
-                    return calendar;
-                case "f":
-                    return clock.getZone();
-                case "g":
-                    return clock.instant();
-                case "h":
-                    return LocalDate.now(clock);
-                default:
-                    throw new IllegalArgumentException("未适配的时钟方法：" + method);
+        private Object valueFor(Method method, Object[] args) throws ReflectiveOperationException {
+            Class<?> returned = method.getReturnType();
+            if (returned == instantConstructor.getDeclaringClass()) {
+                Instant instant = clock.instant();
+                return instantConstructor.newInstance(instant.getEpochSecond(), instant.getNano());
             }
+            if (returned == LocalDateTime.class) { return LocalDateTime.now(clock); }
+            if (returned == kotlinZone.getClass()) { return kotlinZone; }
+            if (returned == ZoneId.class) { return clock.getZone(); }
+            if (returned == Instant.class) { return clock.instant(); }
+            if (returned == LocalDate.class) { return LocalDate.now(clock); }
+            if (returned != Calendar.class) { throw new IllegalArgumentException("未适配的时钟方法：" + method); }
+            TimeZone zone = args[0] == null ? TimeZone.getTimeZone(clock.getZone()) : (TimeZone) args[0];
+            Calendar calendar = Calendar.getInstance(zone);
+            calendar.setTimeInMillis(clock.millis());
+            return calendar;
         }
     }
 }

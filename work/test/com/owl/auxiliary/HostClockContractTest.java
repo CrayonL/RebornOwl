@@ -9,8 +9,12 @@ import java.util.List;
 /** 在 ART 中核对真实 APK 的定位和返回值构造，不安装 Hook 或启动课程。 */
 public final class HostClockContractTest {
     public static void main(String[] args) throws Exception {
-        if (args.length != 2) { throw new IllegalArgumentException("需要时钟类名和时间类名"); }
-        ClassLoader loader = HostClockContractTest.class.getClassLoader();
+        if (args.length != 3) { throw new IllegalArgumentException("需要时钟类名、时间类名和宿主 APK 路径"); }
+        android.content.pm.ApplicationInfo info = new android.content.pm.ApplicationInfo();
+        info.sourceDir = args[2];
+        DexIndex.ensureLoaded(null, info);
+        ClassLoader loader = new dalvik.system.PathClassLoader(args[2],
+                ClassLoader.getSystemClassLoader().getParent());
         Class<?> zone = Class.forName(Targets.C_TIME_ZONE, false, loader);
         Method resolve = TimezoneFeature.class.getDeclaredMethod("resolveClock", ClassLoader.class, Class.class);
         resolve.setAccessible(true);
@@ -19,7 +23,7 @@ public final class HostClockContractTest {
         for (Object entry : methods) {
             Method method = (Method) entry;
             check(method.getDeclaringClass().getName().equals(args[0]), "不得命中其他类");
-            check(!method.getName().equals("b"), "不得挂接单调计时");
+            check(method.getReturnType() != java.time.Duration.class, "不得挂接单调计时");
         }
         Class<?> instant = ((Method) methods.get(0)).getReturnType();
         check(instant.getName().equals(args[1]), "Kotlin Instant 返回类型必须匹配");

@@ -207,6 +207,48 @@ public final class DexIndex {
 
     // ------------------------------------------------------------------ 查询
 
+    /** 按返回类型和一个参数类型找候选；调用方仍须校验完整结构与唯一性。 */
+    static List<String> findClassesWithMethod(String name, String returned, String parameter) {
+        if (!sLoaded || !sEnabled) { throw new IllegalStateException("DEX 索引未就绪"); }
+        Set<String> result = new LinkedHashSet<>();
+        for (byte[] dex : DEX) {
+            scanMethodSignatures(dex, new String[]{name, returned, parameter}, result);
+        }
+        return new ArrayList<>(result);
+    }
+
+    private static void scanMethodSignatures(byte[] dex, String[] signature, Set<String> result) {
+        int types = u32(dex, 0x44);
+        int typeCount = u32(dex, 0x40);
+        Set<Integer> prototypes = new LinkedHashSet<>();
+        for (int index = 0; index < u32(dex, 0x48); index++) {
+            int proto = u32(dex, 0x4c) + index * 12;
+            if (signature[1].equals(typeDesc(dex, types, typeCount, u32(dex, proto + 4)))
+                    && hasParameter(dex, u32(dex, proto + 8), signature[2])) { prototypes.add(index); }
+        }
+        Set<Integer> owners = new LinkedHashSet<>();
+        for (int index = 0; index < u32(dex, 0x58); index++) {
+            int method = u32(dex, 0x5c) + index * 8;
+            if (!prototypes.contains(u16(dex, method + 2))) { continue; }
+            if (signature[0] == null || signature[0].equals(stringAt(dex, u32(dex, method + 4)))) {
+                owners.add(u16(dex, method));
+            }
+        }
+        for (int index = 0; index < u32(dex, 0x60); index++) {
+            int owner = u32(dex, u32(dex, 0x64) + index * 32);
+            if (owners.contains(owner)) { result.add(typeDesc(dex, types, typeCount, owner)); }
+        }
+    }
+
+    private static boolean hasParameter(byte[] dex, int offset, String wanted) {
+        if (offset == 0) { return false; }
+        for (int index = 0; index < u32(dex, offset); index++) {
+            String type = typeDesc(dex, u32(dex, 0x44), u32(dex, 0x40), u16(dex, offset + 4 + index * 2));
+            if (wanted.equals(type)) { return true; }
+        }
+        return false;
+    }
+
     /** 找出代码中引用了 key 的类（内部描述符）。 */
     public static List<String> findClassesContaining(String key) {
         List<String> out = new ArrayList<>();
@@ -330,6 +372,21 @@ public final class DexIndex {
         return false;
     }
 
+    static int instructionUnits(byte[] dex, int off) {
+        int unit = u16(dex, off);
+        return (unit & 255) == 0 && unit != 0 ? payloadUnits(dex, off, unit >>> 8) : LEN[unit & 255];
+    }
+
+    static byte[] definingDex(String descriptor) {
+        for (byte[] dex : DEX) {
+            for (int i = 0; i < u32(dex, 0x60); i++) {
+                int type = u32(dex, u32(dex, 0x64) + i * 32);
+                if (descriptor.equals(typeDesc(dex, u32(dex, 0x44), u32(dex, 0x40), type))) { return dex; }
+            }
+        }
+        throw new IllegalStateException("DEX 类定义缺失：" + descriptor);
+    }
+
     private static int payloadUnits(byte[] dex, int off, int kind) {
         if (kind == 0x01) {
             return 4 + u16(dex, off + 2) * 2;
@@ -350,7 +407,7 @@ public final class DexIndex {
         return stringAt(dex, u32(dex, typeIdsOff + 4 * typeIdx));
     }
 
-    private static String stringAt(byte[] dex, int stringIdx) {
+    static String stringAt(byte[] dex, int stringIdx) {
         int tableOff = u32(dex, 0x3C);
         int dataOff = u32(dex, tableOff + 4 * stringIdx);
         long r = uleb(dex, dataOff);
@@ -377,7 +434,7 @@ public final class DexIndex {
     // ------------------------------------------------------------------ 字节工具
 
     /** 读取 uleb128：返回值高 32 位为数值，低 32 位为「读完后的绝对偏移」。 */
-    private static long uleb(byte[] b, int off) {
+    static long uleb(byte[] b, int off) {
         int result = 0, shift = 0, p = off;
         while (true) {
             int x = b[p++] & 0xFF;
@@ -393,12 +450,12 @@ public final class DexIndex {
         return ((long) result << 32) | (p & 0xFFFFFFFFL);
     }
 
-    private static int u32(byte[] b, int off) {
+    static int u32(byte[] b, int off) {
         return (b[off] & 0xFF) | ((b[off + 1] & 0xFF) << 8)
                 | ((b[off + 2] & 0xFF) << 16) | ((b[off + 3] & 0xFF) << 24);
     }
 
-    private static int u16(byte[] b, int off) {
+    static int u16(byte[] b, int off) {
         return (b[off] & 0xFF) | ((b[off + 1] & 0xFF) << 8);
     }
 

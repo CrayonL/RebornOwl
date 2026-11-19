@@ -21,9 +21,10 @@ def field_ref(dex, index):
 
 
 def verify_models(classes, source):
-    names = re.search(r'C_MUSIC_ACCESS_MODELS\s*=\s*\{(.*?)\};', source, re.S).group(1)
-    declared = {'L' + name.replace('.', '/') + ';' for name in re.findall(r'"([^"]+)"', names)}
-    require(declared == set(EXPECTED) - {'Lnt8;'}, '新增目标恰好覆盖已核对的音乐模型')
+    discovered = {owner for owner, (dex, base) in classes.items()
+                  if any(name == '<init>' and ACCESS in params
+                         for (name, _, params), _, _ in methods(dex, base))}
+    require(discovered == set(EXPECTED), '权限参数类型恰好覆盖已独立核对的九种音乐模型')
     for owner, expected in EXPECTED.items():
         dex, base = classes[owner]
         constructors = [(params, code) for (name, _, params), _, code in methods(dex, base)

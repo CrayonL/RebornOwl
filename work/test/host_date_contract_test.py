@@ -1,12 +1,10 @@
 """验证已适配版本的真实 DEX 时钟契约；版本预期来自独立 APK 核对。"""
-import pathlib
-import re
 import sys
 from host_contract_test import methods, method_exists, constructor, require
 from dexdump import load, u16, u32
 
 HOSTS = {'6.103.6': ('Lbb7;', 'Lnqk;'), '6.104.4': ('Lcf7;', 'Lhzk;'),
-         '6.104.5-china': ('La07;', 'Lj0k;')}
+         '6.104.5-china': ('La07;', 'Lj0k;'), '6.106.5-china': ('Ljh7;', 'Ls1k;')}
 
 
 def main():
@@ -14,9 +12,6 @@ def main():
     clock, instant = HOSTS[version]
     dexes = load(sys.argv[1])
     classes = {d.type(u32(d.b, base)): (d, base) for d in dexes for _, base in d.class_defs()}
-    source = (pathlib.Path(__file__).resolve().parents[2] / 'src/src/com/owl/auxiliary/Targets.java').read_text(encoding='utf-8')
-    candidates = dict(re.findall(r'clocks\.put\("([^"]+)", "([^"]+)"\)', source))
-    require(candidates.get(version) == clock[1:-1], version + ' clock registered')
     returns = {'a': instant, 'b': 'Ljava/time/Duration;', 'c': 'Ljava/time/LocalDateTime;',
                'd': 'Lkotlinx/datetime/TimeZone;', 'e': 'Ljava/util/Calendar;',
                'f': 'Ljava/time/ZoneId;', 'g': 'Ljava/time/Instant;', 'h': 'Ljava/time/LocalDate;'}
