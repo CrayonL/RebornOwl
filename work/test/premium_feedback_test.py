@@ -22,7 +22,7 @@ public class Toast {
 }
 '''
 TEST = r'''
-package com.owl.auxiliary;
+package io.github.crayonl.rebornowl;
 import android.widget.Toast;
 import java.lang.reflect.Method;
 public class PremiumFeedbackProbe {
@@ -82,7 +82,7 @@ def main():
         run([javac, '-J-Dstderr.encoding=UTF-8', '-encoding', 'UTF-8', '-cp', classpath, '-d', str(classes),
              str(folder / 'Toast.java'), str(folder / 'PremiumFeedbackProbe.java')])
         run([java, '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8', '-cp', classpath,
-             'com.owl.auxiliary.PremiumFeedbackProbe'])
+             'io.github.crayonl.rebornowl.PremiumFeedbackProbe'])
 
 
 if __name__ == '__main__':

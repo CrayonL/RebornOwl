@@ -6,6 +6,8 @@
 /work/feedback-*/
 /work/source-link-*/
 /work/device/
+/work/analysis/
+/work/full-adapt-classes/
 /work/signing/
 /work/build-validation.txt
 /work/validation-*.txt

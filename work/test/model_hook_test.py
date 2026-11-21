@@ -4,7 +4,29 @@ from pathlib import Path
 import subprocess
 import tempfile
 from clock_hook_test import FIXTURES, fixture_dex
-from music_hook_test import BRIDGE
+
+BRIDGE = r'''
+package de.robv.android.xposed;
+import java.lang.reflect.*;
+import java.util.*;
+public class XposedBridge {
+    public static final Map<Member, XC_MethodHook> hooks = new LinkedHashMap<>();
+    public static XC_MethodHook.Unhook hookMethod(Member method, XC_MethodHook hook) {
+        if (hooks.put(method, hook) != null) { throw new AssertionError("重复 Hook"); }
+        return null;
+    }
+    public static Set<XC_MethodHook.Unhook> hookAllConstructors(Class<?> type, XC_MethodHook hook) {
+        for (Constructor<?> ctor : type.getDeclaredConstructors()) { hookMethod(ctor, hook); }
+        return Collections.emptySet();
+    }
+    public static Object[] rewrite(Constructor<?> ctor, Object[] args) throws Throwable {
+        XC_MethodHook.MethodHookParam param = new XC_MethodHook.MethodHookParam();
+        param.method = ctor; param.args = args;
+        hooks.get(ctor).beforeHookedMethod(param);
+        return param.args;
+    }
+}
+'''
 
 MODELS = {
     'ChangedSettings': ('SessionDebugSettings(allowSessionOverride=', 'Integer', 'maxSessionLength', 'alwaysGradeCorrect'),
@@ -16,7 +38,7 @@ MODELS = {
 }
 
 PROBE = r'''
-package com.owl.auxiliary;
+package io.github.crayonl.rebornowl;
 import java.lang.reflect.*;
 import java.util.*;
 import de.robv.android.xposed.XposedBridge;
@@ -99,7 +121,7 @@ class Descriptor {
 class TestSerializer {
     static final Descriptor D;
     static {
-        D = new Descriptor("com.owl.auxiliary.TestUser", new TestSerializer(), 6);
+        D = new Descriptor("io.github.crayonl.rebornowl.TestUser", new TestSerializer(), 6);
         D.add("id", true); D.add("subscriberLevel", true); D.add("inserted", true);
         D.add("other", true); D.add("hasMax", true); D.add("name", true);
     }
@@ -115,8 +137,8 @@ def sources():
         first_target = marker.endswith('(' + value_label + '=')
         first_value, helper_value = ('value', 'text') if first_target else ('text', 'value')
         helper_type, helper_label = ('String', 'text') if first_target else (kind, value_label)
-        result[f'com/owl/auxiliary/{name}.java'] = f'''
-package com.owl.auxiliary;
+        result[f'io/github/crayonl/rebornowl/{name}.java'] = f'''
+package io.github.crayonl.rebornowl;
 public class {name} {{
     public final String text; public final boolean flag; public final long wide;
     public final int unrelated; public final {kind} value;
@@ -135,8 +157,8 @@ public class {name} {{
 '''
     result['com/duolingo/core/language/Language.java'] = 'package com.duolingo.core.language; public class Language {}'
     for kind in ('CharacterMatch', 'WordMatch', 'ListenMatch'):
-        result[f'com/owl/auxiliary/Changed{kind}.java'] = f'''
-package com.owl.auxiliary;
+        result[f'io/github/crayonl/rebornowl/Changed{kind}.java'] = f'''
+package io.github.crayonl.rebornowl;
 public class Changed{kind} {{
     public String toString() {{ return "{kind}(base="; }}
     public boolean renamed(String a, String b) {{ return false; }}
@@ -145,7 +167,7 @@ public class Changed{kind} {{
     public boolean equals(Object other) {{ return false; }}
 }}
 '''
-    result['com/owl/auxiliary/ModelHookProbe.java'] = PROBE
+    result['io/github/crayonl/rebornowl/ModelHookProbe.java'] = PROBE
     return result
 
 
@@ -176,7 +198,7 @@ def main():
         run(compiler + [str(folder / name) for name in fixtures])
         dex = fixture_dex(args, folder, classes)
         run([str(args.jdk / 'bin/java.exe'), '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8', '-cp',
-             classpath, 'com.owl.auxiliary.ModelHookProbe', str(dex)])
+             classpath, 'io.github.crayonl.rebornowl.ModelHookProbe', str(dex)])
 
 
 if __name__ == '__main__':

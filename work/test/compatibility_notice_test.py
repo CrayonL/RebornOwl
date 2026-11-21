@@ -31,7 +31,7 @@ public class PackageManager {
         PackageInfo result = new PackageInfo(); result.versionName = version; return result;
     }
 }""",
-    'SettingsInjector.java': """package com.owl.auxiliary;
+    'SettingsInjector.java': """package io.github.crayonl.rebornowl;
 public class SettingsInjector {
     public static int shown;
     public static String message, fingerprint;
@@ -41,7 +41,7 @@ public class SettingsInjector {
         shown++; message = text; fingerprint = key; return null;
     }
 }""",
-    'CompatibilityNoticeProbe.java': r"""package com.owl.auxiliary;
+    'CompatibilityNoticeProbe.java': r"""package io.github.crayonl.rebornowl;
 import android.app.Activity;
 import android.content.pm.PackageManager;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
@@ -76,15 +76,22 @@ public class CompatibilityNoticeProbe {
     private static void verifyDisabled() throws Throwable {
         reset(); OFF.broken = true; FeatureManager.applyAll(null);
         CompatibilityNotice.onResume(ACTIVITY); CompatibilityNotice.onResume(ACTIVITY);
-        check(SettingsInjector.shown == 1, "关闭功能的明确异常也必须提示，且同进程不重复");
-        check(SettingsInjector.message.contains("test_off"), "包含实际异常功能");
+        check(SettingsInjector.shown == 0, "未开启的功能结构异常只写日志，不打扰用户");
         check(OFF.applies == 0 && ON.applies == 1, "检查失败不改变开关或阻断其他功能");
         check(FeatureDiagnostics.summary().contains("检测到异常，未开启"), "不得把关闭误报为跳过检测");
         Config.set(OFF.key(), true);
         check(FeatureDiagnostics.summary().contains("开关已更改，待重启"), "选择开关不等于已经加载");
+        reset(); OFF.broken = true; Config.set(OFF.key(), true); FeatureManager.applyAll(null);
+        CompatibilityNotice.onResume(ACTIVITY);
+        check(SettingsInjector.shown == 1, "已开启的功能异常必须提示");
+        check(SettingsInjector.message.contains("test_off") && SettingsInjector.message.contains("不可用"),
+                "文案只说明哪个功能不可用");
+        check(!SettingsInjector.message.contains("IllegalStateException")
+                && !SettingsInjector.message.contains("目标不存在"), "不得把异常栈等技术细节给用户看");
     }
     private static void verifySuppression() throws Throwable {
-        reset(); OFF.broken = true; FeatureManager.applyAll(null); CompatibilityNotice.onResume(ACTIVITY);
+        reset(); OFF.broken = true; Config.set(OFF.key(), true); FeatureManager.applyAll(null);
+        CompatibilityNotice.onResume(ACTIVITY);
         String first = SettingsInjector.fingerprint;
         check(Config.suppressProblem(first), "保存用户忽略选择");
         // 重新从磁盘加载，不能仅依赖内存里的选择。
@@ -102,7 +109,7 @@ public class CompatibilityNoticeProbe {
         check(SettingsInjector.shown == 3, "更新模块后重新提醒");
     }
     private static void verifyRetry() throws Throwable {
-        reset(); OFF.broken = true; FeatureManager.applyAll(null);
+        reset(); OFF.broken = true; Config.set(OFF.key(), true); FeatureManager.applyAll(null);
         ACTIVITY.finishing = true; CompatibilityNotice.onResume(ACTIVITY); ACTIVITY.finishing = false;
         ACTIVITY.destroyed = true; CompatibilityNotice.onResume(ACTIVITY); ACTIVITY.destroyed = false;
         PackageManager.fail = true; CompatibilityNotice.onResume(ACTIVITY); PackageManager.fail = false;
@@ -180,7 +187,7 @@ def main():
             (folder / name).write_text(content, encoding='utf-8')
         subprocess.run(compiler + [str(folder / name) for name in STUBS], check=True, timeout=60)
         subprocess.run([str(args.jdk / 'bin/java.exe'), '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8',
-                        '-cp', classpath, 'com.owl.auxiliary.CompatibilityNoticeProbe', str(folder)], check=True, timeout=60)
+                        '-cp', classpath, 'io.github.crayonl.rebornowl.CompatibilityNoticeProbe', str(folder)], check=True, timeout=60)
 
 
 if __name__ == '__main__':

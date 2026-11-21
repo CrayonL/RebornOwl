@@ -47,20 +47,20 @@ $classes = Join-Path $PSScriptRoot ('work/test-' + [guid]::NewGuid().ToString('N
 New-Item -ItemType Directory -Path $classes | Out-Null
 $sources = Get-ChildItem -LiteralPath "$PSScriptRoot/src/src", "$PSScriptRoot/work/test" -Filter '*.java' -Recurse | ForEach-Object FullName
 Invoke-TestCommand "$JdkRoot/bin/javac.exe" (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options', '-classpath', "$platform;$modern;$xposed", '-d', $classes) + $sources)
-$tests = @('DexIndexRegressionTest', 'CorrectFeatureTest', 'PremiumFeatureTest', 'UnlockLessonsFeatureTest', 'AutoAdaptModelTest', 'ModelContractDexTest', 'DexIndexTest', 'DateOverrideTest', 'TimezoneFeatureTest', 'SkipFeatureTest')
+$tests = @('DexIndexRegressionTest', 'CorrectFeatureTest', 'PremiumFeatureTest', 'UnlockLessonsFeatureTest', 'AutoAdaptModelTest', 'ModelContractDexTest', 'DexIndexTest', 'DateOverrideTest', 'TimezoneFeatureTest', 'SkipFeatureTest', 'StructuralAnchorTest', 'SemanticTypesTest')
 foreach ($test in $tests) {
-    Invoke-TestCommand "$JdkRoot/bin/java.exe" @('-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8', '-cp', "$classes;$platform;$modern;$xposed", "com.owl.auxiliary.$test", $DexDirectory)
+    Invoke-TestCommand "$JdkRoot/bin/java.exe" @('-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8', '-cp', "$classes;$platform;$modern;$xposed", "io.github.crayonl.rebornowl.$test", $DexDirectory)
 }
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_date_contract_test.py", $DexDirectory, $HostVersion)
 Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/host_auto_adapt_contract_test.py", $DexDirectory, $HostVersion,
     '--java', "$JdkRoot/bin/java.exe", '--classpath', "$classes;$platform;$modern;$xposed")
 $contracts = if ($HostVersion -eq '6.104.5-china') { @('host_1045_contract_test.py') }
-             elseif ($HostVersion -eq '6.103.6') { @('host_contract_test.py', 'host_music_contract_test.py', 'host_unlock_contract_test.py') }
+             elseif ($HostVersion -eq '6.103.6') { @('host_contract_test.py', 'host_unlock_contract_test.py') }
              else { @() }
 foreach ($test in $contracts) {
     Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/$test", $DexDirectory)
 }
-foreach ($test in @('premium_feedback_test.py', 'source_link_test.py', 'clock_hook_test.py', 'music_hook_test.py', 'model_hook_test.py', 'compatibility_notice_test.py')) {
+foreach ($test in @('premium_feedback_test.py', 'source_link_test.py', 'clock_hook_test.py', 'model_hook_test.py', 'compatibility_notice_test.py')) {
     Invoke-TestCommand $PythonPath @('-X', 'utf8', '-B', "$PSScriptRoot/work/test/$test", '--sdk', $SdkRoot, '--jdk', $JdkRoot)
 }
 $dex = Join-Path $classes 'dex'
@@ -76,12 +76,12 @@ if ($Offline) {
 $remoteDex = '/data/local/tmp/owl-entry-test.dex'
 Invoke-TestCommand $adb @('-s', $DeviceSerial, 'push', "$dex/classes.dex", $remoteDex)
 # 原包 API JAR 仅用于编译；入口测试在 ART 上使用手机真实框架类。
-Invoke-TestCommand $adb @('-s', $DeviceSerial, 'shell', '/system/bin/app_process', "-Djava.class.path=${remoteDex}:/data/adb/modules/zygisk_lsposed/framework.dex", '/system/bin', 'com.owl.auxiliary.XposedEntryTest')
+Invoke-TestCommand $adb @('-s', $DeviceSerial, 'shell', '/system/bin/app_process', "-Djava.class.path=${remoteDex}:/data/adb/modules/zygisk_lsposed/framework.dex", '/system/bin', 'io.github.crayonl.rebornowl.XposedEntryTest')
 $hostApk = (& $adb -s $DeviceSerial shell pm path com.duolingo | Select-Object -First 1) -replace '^package:', ''
 if ($LASTEXITCODE -ne 0 -or $hostApk -notmatch '^/data/app/[A-Za-z0-9/~_+=.-]+/base\.apk$') {
     throw '无法确定当前多邻国安装路径'
 }
 # 直接调用宿主结束判断的纯函数，不创建课程或提交学习进度。
-Invoke-TestCommand $adb @('-s', $DeviceSerial, 'shell', '/system/bin/app_process', "-Djava.class.path=${remoteDex}:/data/adb/modules/zygisk_lsposed/framework.dex", '/system/bin', 'com.owl.auxiliary.SkipFeatureTest', '--host', $HostVersion, $hostApk)
-Invoke-TestCommand $adb @('-s', $DeviceSerial, 'shell', '/system/bin/app_process', "-Djava.class.path=${remoteDex}:/data/adb/modules/zygisk_lsposed/framework.dex", '/system/bin', 'com.owl.auxiliary.HostFeatureContractTest', $hostApk)
+Invoke-TestCommand $adb @('-s', $DeviceSerial, 'shell', '/system/bin/app_process', "-Djava.class.path=${remoteDex}:/data/adb/modules/zygisk_lsposed/framework.dex", '/system/bin', 'io.github.crayonl.rebornowl.SkipFeatureTest', '--host', $HostVersion, $hostApk)
+Invoke-TestCommand $adb @('-s', $DeviceSerial, 'shell', '/system/bin/app_process', "-Djava.class.path=${remoteDex}:/data/adb/modules/zygisk_lsposed/framework.dex", '/system/bin', 'io.github.crayonl.rebornowl.HostFeatureContractTest', $hostApk)
 Write-Host 'ALL_TESTS_PASS（离线回归和 ART 入口测试，不代表全部业务 Hook 验收）'

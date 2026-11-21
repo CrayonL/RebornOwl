@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.github.crayonl.rebornowl"
-    android:versionCode="37"
-    android:versionName="1.0.6">
+    android:versionCode="38"
+    android:versionName="1.0.7">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
     <queries>
@@ -15,7 +15,7 @@
         android:description="@string/module_description"
         android:hasCode="true">
         <activity
-            android:name="com.owl.auxiliary.ModuleActivity"
+            android:name="io.github.crayonl.rebornowl.ModuleActivity"
             android:exported="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
@@ -25,7 +25,7 @@
         </activity>
         <activity-alias
             android:name="io.github.crayonl.rebornowl.Launcher"
-            android:targetActivity="com.owl.auxiliary.ModuleActivity"
+            android:targetActivity="io.github.crayonl.rebornowl.ModuleActivity"
             android:enabled="true"
             android:exported="true">
             <intent-filter>

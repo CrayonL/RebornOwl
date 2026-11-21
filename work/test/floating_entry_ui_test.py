@@ -16,7 +16,7 @@ def adb(args, *command):
 def nodes(args):
     adb(args, 'shell', '/system/bin/app_process',
         '-Djava.class.path=/data/local/tmp/owl-entry-test.dex:/system/framework/uiautomator.jar',
-        '/system/bin', 'com.owl.auxiliary.UiDump', '/sdcard/owl-floating-ui.xml')
+        '/system/bin', 'io.github.crayonl.rebornowl.UiDump', '/sdcard/owl-floating-ui.xml')
     xml = adb(args, 'exec-out', 'cat', '/sdcard/owl-floating-ui.xml')
     result = list(ET.fromstring(xml).iter('node'))
     assert any(n.get('package') == 'com.duolingo' for n in result), '当前不是多邻国页面'

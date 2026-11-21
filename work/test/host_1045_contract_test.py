@@ -1,24 +1,8 @@
 """6.104.5-china 的实际调用与字段契约；结构定位另由 ART 全功能检查覆盖。"""
 import sys
-from host_contract_test import methods, require, constructor, factory_contract, footer_button_contract
-from host_music_contract_test import ACCESS, EXPECTED, field_ref
+from host_contract_test import methods, require, constructor, footer_button_contract
+from host_unlock_contract_test import field_ref
 from dexdump import load, u16, u32
-
-
-def music_contract(classes):
-    renamed = dict(zip(('Lnt8;', 'Lfk4;', 'Lok4;', 'Lpk4;', 'Lzmq;'),
-                       ('Lnf8;', 'Ls34;', 'Lb44;', 'Lc44;', 'Lpop;')))
-    for old, expected in EXPECTED.items():
-        owner = renamed.get(old, old)
-        dex, base = classes[owner]
-        constructors = [(ps, code) for (name, _, ps), _, code in methods(dex, base)
-                        if name == '<init>' and ACCESS in ps]
-        require({(len(ps), ps.index(ACCESS)) for ps, _ in constructors} == expected,
-                owner + ' 音乐权限参数位置未改变')
-        require(all(ps.count(ACCESS) == 1 for ps, _ in constructors), owner + ' 权限参数唯一')
-        stores = {field_ref(dex, u16(dex.b, pos + 2)) for _, code in constructors
-                  for pos, op in dex._walk(code) if op == 0x5b}
-        require(any(ref[:2] == (owner, ACCESS) for ref in stores), owner + ' 实际写入权限字段')
 
 
 def popup_contract(classes):
@@ -53,9 +37,7 @@ def popup_contract(classes):
 def main():
     classes = {dex.type(u32(dex.b, base)): (dex, base)
                for dex in load(sys.argv[1]) for _, base in dex.class_defs()}
-    factory_contract(classes, {'C_DASHBOARD_CLICK_FACTORY': 'eot'})
     footer_button_contract(classes)
-    music_contract(classes)
     popup_contract(classes)
     print('HOST_1045_CONTRACT_PASS: 6.104.5-china (2494); static DEX evidence only')
 

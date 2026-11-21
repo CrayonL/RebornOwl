@@ -36,7 +36,7 @@ public class Intent {
         return githubAvailable ? new ComponentName() : null;
     }
 }''',
-    'SourceLinkProbe.java': '''package com.owl.auxiliary;
+    'SourceLinkProbe.java': '''package io.github.crayonl.rebornowl;
 import android.app.Activity;
 import android.content.Intent;
 public class SourceLinkProbe {
@@ -95,7 +95,7 @@ def main():
             (folder / name).write_text(content, encoding='utf-8')
         run(compile_args + [str(folder / name) for name in STUBS])
         run([java, '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8', '-cp', classpath,
-             'com.owl.auxiliary.SourceLinkProbe'])
+             'io.github.crayonl.rebornowl.SourceLinkProbe'])
 
 
 if __name__ == '__main__':

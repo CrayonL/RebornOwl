@@ -183,7 +183,7 @@ def main():
     classes = {dex.type(u32(dex.b, base)): (dex, base)
                for dex in dexes for _, base in dex.class_defs()}
     root = Path(__file__).resolve().parents[2]
-    source = (root / 'src/src/com/owl/auxiliary/Targets.java').read_text(encoding='utf-8')
+    source = (root / 'src/src/io/github/crayonl/rebornowl/Targets.java').read_text(encoding='utf-8')
     signature_contract(classes, source)
     read_write_contract(dexes)
     gate_contract(classes)

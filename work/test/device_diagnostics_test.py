@@ -9,8 +9,8 @@ import xml.etree.ElementTree as ET
 
 INTERNAL = '/data/user/0/com.duolingo/app_owl-auxiliary/config.properties'
 EXTERNAL = '/sdcard/Android/data/com.duolingo/files/owl-auxiliary.properties'
-KEYS = ('debug', 'music', 'premium', 'gametime', 'date', 'zoneid', 'correct', 'unlock', 'skip')
-LABELS = {'调试模式', '音乐课程解锁', '会员解锁', '无限时间', '日期', '地区', '强制正确', '解锁关卡', '直接通关'}
+KEYS = ('debug', 'premium', 'gametime', 'date', 'zoneid', 'correct', 'unlock', 'skip')
+LABELS = {'调试模式', '会员解锁', '无限时间', '日期', '地区', '强制正确', '解锁关卡', '直接通关'}
 
 
 def adb(*command, data=None):
@@ -26,7 +26,7 @@ def write(path, data):
 def nodes(name):
     adb('shell', '/system/bin/app_process',
         '-Djava.class.path=/data/local/tmp/owl-entry-test.dex:/system/framework/uiautomator.jar',
-        '/system/bin', 'com.owl.auxiliary.UiDump', '/sdcard/owl-floating-ui.xml')
+        '/system/bin', 'io.github.crayonl.rebornowl.UiDump', '/sdcard/owl-floating-ui.xml')
     xml = adb('exec-out', 'cat', '/sdcard/owl-floating-ui.xml')
     (out / (name + '.xml')).write_bytes(xml)
     return list(ET.fromstring(xml).iter('node'))
@@ -72,7 +72,7 @@ def main():
         (out / 'all-features-runtime.txt').write_text(log, encoding='utf-8')
         assert set(re.findall(r'\[加载完成\] ([^\r\n]+)', log)) == LABELS, log
         assert '部分功能运行异常' not in labels(items), '全开启启动出现异常'
-        print('PASS 真机九项功能全部安装 Hook，启动无异常', flush=True)
+        print(f'PASS 真机 {len(LABELS)} 项功能全部安装 Hook，启动无异常', flush=True)
         exercise_notice(original[EXTERNAL])
     finally:
         adb('shell', 'am', 'force-stop', 'com.duolingo')

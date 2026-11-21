@@ -57,8 +57,8 @@ public class XC_LoadPackage {
     public static class LoadPackageParam { public ClassLoader classLoader; }
 }
 ''',
-    'com/owl/auxiliary/DexFixture.java': r'''
-package com.owl.auxiliary;
+    'io/github/crayonl/rebornowl/DexFixture.java': r'''
+package io.github.crayonl.rebornowl;
 public class DexFixture {
     public static void load(String path) throws Exception {
         try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(java.nio.file.Paths.get(path))) {
@@ -99,7 +99,7 @@ public class TimeZone {
 }
 ''',
     'ClockHookProbe.java': r'''
-import com.owl.auxiliary.*;
+import io.github.crayonl.rebornowl.*;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import java.time.*;

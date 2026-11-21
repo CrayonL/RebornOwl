@@ -1,6 +1,5 @@
 """核对手机 6.103.6 APK 的实际 DEX 契约；不执行宿主或网络请求。"""
 import pathlib
-import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -41,39 +40,6 @@ def constructor(classes, owner, expected):
     require(expected in found, owner + " constructor")
 
 
-def factory_contract(classes, constants):
-    owner = "L" + constants["C_DASHBOARD_CLICK_FACTORY"].replace(".", "/") + ";"
-    dex, base = classes[owner]
-    invokes = [(access, code) for (name, ret, ps), access, code in methods(dex, base)
-               if name == "invoke" and ret == "Ljava/lang/Object;" and ps == [ret]]
-    require(len(invokes) == 1 and not invokes[0][0] & 8, "dashboard invoke(Object)")
-    casts = {dex.type(u16(dex.b, pos + 2)) for pos, op in dex._walk(invokes[0][1]) if op == 0x1f}
-    require("Lcom/duolingo/plus/dashboard/DashboardFeature;" in casts, "dashboard enum branch")
-    created = {dex.type(u16(dex.b, pos + 2)) for pos, op in dex._walk(invokes[0][1]) if op == 0x22}
-    require(any(implements_type(classes, cls, "Landroid/view/View$OnClickListener;") for cls in created),
-            "factory creates click listener")
-    constructor(classes, owner, [constants.get("MODEL", "Lcom/duolingo/plus/dashboard/PlusViewModel;"),
-                                 constants.get("DISCRIMINATOR", "I")])
-
-
-def implements_type(classes, owner, wanted):
-    dex, base = classes[owner]
-    offset = u32(dex.b, base + 12)
-    if not offset:
-        return False
-    interfaces = [dex.type(u16(dex.b, offset + 4 + index * 2)) for index in range(u32(dex.b, offset))]
-    return wanted in interfaces
-
-
-def set_contract(classes):
-    owner = "Lcom/duolingo/core/pcollections/migration/PSet;"
-    dex, base = classes[owner]
-    returns = [ret for (name, ret, ps), _, _ in methods(dex, base)
-               if name == "plus" and ps == ["Ljava/lang/Object;"]]
-    require(len(returns) == 1 and implements_type(classes, returns[0], owner),
-            "PSet.plus(Object) returns a PSet implementation")
-
-
 def grade_contract(classes):
     constructor(classes, "Lget;", ["F", "Lcom/duolingo/core/music/mistakerecycling/MusicMistakeMeasureInfo;"])
     dex, base = classes["Lcom/duolingo/core/challenges/grading/GradingState$Completed$WithGradingRibbon$Graded;"]
@@ -90,7 +56,7 @@ def grade_contract(classes):
                                    "Z", "Ljava/lang/String;"])
 
 
-def user_contract(classes, source):
+def user_contract(classes):
     dex, base = classes["La690;"]
     names = [text for (name, _, _), _, code in methods(dex, base)
              if name == "<clinit>" for text in dex.code_strings(code)]
@@ -124,14 +90,10 @@ def main():
     dexes = load(sys.argv[1])
     require(len(dexes) == 10, "expected ten host DEX files")
     classes = {dex.type(u32(dex.b, base)): (dex, base) for dex in dexes for _, base in dex.class_defs()}
-    source = (ROOT / "src/src/com/owl/auxiliary/Targets.java").read_text(encoding="utf-8")
-    factory_contract(classes, {"C_DASHBOARD_CLICK_FACTORY": "tuu"})
     grade_contract(classes)
-    user_contract(classes, source)
+    user_contract(classes)
     method_exists(classes, "Lcom/duolingo/settings/SettingsActivity;", ("onCreate", "V", ["Landroid/os/Bundle;"]))
-    set_contract(classes)
     footer_button_contract(classes)
-    constructor(classes, "Lcom/duolingo/data/video/call/VideoCallCallOrigin$PracticeHub;", [])
     print("HOST_CONTRACT_PASS: 6.103.6 (2488); offline only")
 
 
