@@ -7,6 +7,9 @@
 /work/source-link-*/
 /work/device/
 /work/analysis/
+/work/framework-*-run/
+/work/test/framework_compat/
+/work/commit-msg.txt
 /work/full-adapt-classes/
 /work/signing/
 /work/build-validation.txt
