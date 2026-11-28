@@ -8,6 +8,9 @@
 /work/device/
 /work/analysis/
 /work/framework-*-run/
+/work/framework-release-smoke/
+/work/release-*/
+/work/*.html
 /work/test/framework_compat/
 /work/commit-msg.txt
 /work/full-adapt-classes/
